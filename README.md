@@ -9,9 +9,10 @@ pip install quarantine
 ```python
 from quarantine import quarantine
 
+
 @quarantine
-def process(item):
-    ...  # your normal code, unchanged
+def process(item): ...  # your normal code, unchanged
+
 
 for item in items:
     process(item)
@@ -52,8 +53,8 @@ for item in items:
     try:
         process(item)
     except Exception as e:
-        failed.append(item)          # ❌ lost forever if the script dies later
-        print(f"failed: {e}")        # ❌ traceback gone — good luck debugging tomorrow
+        failed.append(item)  # ❌ lost forever if the script dies later
+        print(f"failed: {e}")  # ❌ traceback gone — good luck debugging tomorrow
         # ❌ how do I re-run JUST these failures after I fix the bug?
         # ❌ what if 500 fail in a row because the API is down — keep going?!
         # ❌ how do I save a weird object (DataFrame row? bytes?) to look at later?
@@ -93,6 +94,55 @@ Your job finishes. The sick items wait for you, with their full medical charts.
 
 ---
 
+## Installation
+
+```bash
+pip install quarantine
+```
+
+That is the whole install story. Some alternatives, if you prefer:
+
+```bash
+uv add quarantine            # uv projects
+uv pip install quarantine    # uv, without a project
+python -m pip install --user quarantine
+pip install git+https://github.com/quarantine-py/quarantine   # unreleased main
+```
+
+**Requirements**
+
+| | |
+|---|---|
+| Python | 3.10 or newer (CPython; tested on 3.10 - 3.13) |
+| Runtime dependencies | none - it is standard library only |
+| Operating systems | Linux, macOS, Windows (tested on all three in CI) |
+
+Installing also puts a `quarantine` command on your `PATH`. Check both halves:
+
+```bash
+$ quarantine --version
+quarantine 0.1.0
+$ python -c "import quarantine; print(quarantine.__version__)"
+0.1.0
+```
+
+If the command is not found (a common `--user` install wrinkle), the module
+form always works and takes the same arguments:
+
+```bash
+python -m quarantine list
+```
+
+Nothing needs configuring. The first time a call fails, `.quarantine/` appears
+next to wherever you started Python. Add it to your `.gitignore` -
+**quarantined inputs are real data, and real data does not belong in git.**
+
+```gitignore
+.quarantine/
+```
+
+---
+
 ## Usage
 
 ### 1. Basic — decorate and forget
@@ -100,10 +150,12 @@ Your job finishes. The sick items wait for you, with their full medical charts.
 ```python
 from quarantine import quarantine
 
+
 @quarantine
 def process(row):
-    price = float(row["price"])     # crashes on "N/A"? quarantined.
+    price = float(row["price"])  # crashes on "N/A"? quarantined.
     save_to_db(row["id"], price)
+
 
 for row in rows:
     process(row)
@@ -151,12 +203,12 @@ Tune it: `@quarantine(halt_after=100)`.
 
 ```python
 @quarantine(
-    dir=".quarantine",        # where the sick bay lives
+    dir=".quarantine",  # where the sick bay lives
     only=(ValueError, KeyError),  # only quarantine these; others still crash
-    halt_after=50,            # consecutive-failure circuit breaker
-    max_items=10_000,         # cap disk usage
+    halt_after=50,  # consecutive-failure circuit breaker
+    max_items=10_000,  # cap disk usage
     redact=["api_key", "password"],  # scrub these fields before saving inputs
-    on_quarantine=my_alert_fn,       # e.g., send a Slack ping
+    on_quarantine=my_alert_fn,  # e.g., send a Slack ping
 )
 def process(item): ...
 ```
@@ -193,6 +245,125 @@ Design rules:
 - **Serialization fallbacks** — pickle → JSON → repr. Something readable is *always* saved, even for exotic objects.
 
 ---
+
+---
+
+## Command-line reference
+
+Every command takes `-d/--dir PATH` (default: `$QUARANTINE_DIR`, else
+`./.quarantine`), and `list`, `show`, `retry` and `stats` all take `--json` so
+you can pipe them somewhere useful.
+
+| Command | What it does |
+|---|---|
+| `quarantine list` | Table of everything quarantined. `ls` works too. `-f/--function NAME`, `-n/--limit N`. |
+| `quarantine show ID [ID...]` | One record in full: metadata, the input, the whole traceback. |
+| `quarantine retry [ID...]` | Re-run records; delete the ones that now succeed. `-f/--function NAME`, `--dry-run`, `-i/--import FILE.py` (for functions that live in a script). |
+| `quarantine debug ID` | Re-run one record and drop you into `pdb` **on the frame that raised**. `-p/--print` to just dump it, `--no-post-mortem` to skip re-running and get the input in scope, `-i/--import FILE.py` as above. |
+| `quarantine clear [ID...]` | Delete records. With no ids it clears everything and asks first; `-y/--yes` skips the prompt. `rm` works too. |
+| `quarantine stats` | Counts by function and by error type, plus how much disk the folder is using. |
+| `quarantine reindex` | Rebuild `index.json` from the record folders and sweep up leftover temp files from a hard crash. |
+
+Exit codes, for scripts and CI:
+
+| Code | Meaning |
+|---|---|
+| `0` | Everything you asked for succeeded. |
+| `1` | The command ran, but something is still wrong - a retry failed again, or a record could not be replayed. |
+| `2` | Bad usage, or the folder could not be read. |
+
+```bash
+# fail a nightly job if anything is still sitting in quarantine
+quarantine retry || echo "still broken - look at: $(quarantine list -n 3)"
+```
+
+## Python API reference
+
+```python
+from quarantine import quarantine, shield, Quarantine, QUARANTINED, records, retry
+```
+
+**Decorating and looping**
+
+| | |
+|---|---|
+| `@quarantine` / `@quarantine(...)` | Wrap one function. Options are listed under [Options](#6-options-all-optional). Works on `async def`. |
+| `shield(items, using=fn, **options)` | Iterator yielding only the results that worked. |
+| `ashield(items, using=fn, **options)` | Same, for `async def` work and/or async iterables. |
+
+**Return values.** A quarantined call returns the `QUARANTINED` sentinel; an
+input recognised as already-bad returns `SKIPPED`. Both are falsy, so
+`if process(item):` does the sensible thing. Use `is_quarantined(result)` /
+`is_skipped(result)` when you want to be explicit.
+
+**The explicit object**, when you would rather pass something around than rely
+on a decorator:
+
+```python
+from quarantine import Quarantine
+
+q = Quarantine("build/bad-rows", halt_after=10, redact=["api_key"])
+
+safe = q.wrap(process)  # same as the decorator
+q.call(process, item)  # one-off call, same protection
+await q.acall(fetch, url)  # async one-off
+q.records()  # list[Record], oldest first
+q.retry()  # -> RetryResult(recovered, still_failing, unretryable)
+await q.aretry()  # for records from async functions
+q.clear()  # empty the folder
+q.stats  # Stats(processed, quarantined, skipped, recovered)
+q.summary_line()  # the one-line report, or None
+len(q), list(q)  # how many records; iterate them
+```
+
+**Module-level shortcuts** operate on the default folder (or `dir=`):
+`records()`, `retry()`, `aretry()`, `clear()`, `summary()`.
+
+**A `Record`** is what you get back from `records()`:
+
+```python
+record = records()[0]
+record.id  # 1
+record.function  # "process" (qualified name in .qualified_name)
+record.error_type  # "ValueError"
+record.summary  # "ValueError: could not convert string to float: 'N/A'"
+record.attempts  # 2, after one retry
+record.redacted  # ["api_key"] - what was scrubbed
+record.path  # Path(".quarantine/0001")
+record.traceback_text()  # the stored traceback
+record.load_call()  # Call(args=({...},), kwargs={}) - the original input
+record.load_call().item  # the item itself
+```
+
+**Exceptions** (all subclass `QuarantineError`, and none of them are ever
+quarantined themselves):
+
+| | |
+|---|---|
+| `SystemicFailure` | The `halt_after` circuit breaker tripped. `.count`, `.last_error`. |
+| `QuarantineFull` | `max_items` reached. Nothing is dropped silently - this is raised instead, chained from the original error. |
+| `StorageError` | The folder could not be read or written. |
+| `ResolutionError` | A retry could not import the function a record came from. |
+
+**Environment**
+
+| | |
+|---|---|
+| `QUARANTINE_DIR` | Default folder for both the library and the CLI. |
+
+## Documentation
+
+| | |
+|---|---|
+| [docs/installation.md](docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
+| [docs/usage.md](docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |
+| [docs/cli.md](docs/cli.md) | Every command, flag and exit code, with output samples. |
+| [docs/api.md](docs/api.md) | Complete Python API reference. |
+| [docs/on-disk-format.md](docs/on-disk-format.md) | What is in `.quarantine/`, and the guarantees about it. |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | "It skipped my item", "retry says it cannot import", and friends. |
+| [docs/faq.md](docs/faq.md) | Longer answers to the questions below. |
+| [CHANGELOG.md](CHANGELOG.md) | What changed, and when. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, the checks, and the ground rules for changes. |
 
 ## When NOT to use quarantine
 
