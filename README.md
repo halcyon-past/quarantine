@@ -177,7 +177,9 @@ $ quarantine retry
 ✓ 3 recovered · ✗ 1 still failing (kept in quarantine)
 ```
 
-No rerunning the 9,996 items that already worked.
+No rerunning the 9,996 items that already worked. 
+
+*(Note: If your function lives in a standalone script rather than an installed package, use `-i` to tell quarantine where to import it from: `quarantine retry -i my_script.py`)*
 
 ### 4. Debug with the actual bad input
 
@@ -185,6 +187,8 @@ No rerunning the 9,996 items that already worked.
 $ quarantine debug 2
 # opens a Python debugger with `item` set to the exact input that failed
 ```
+
+*(You can use `-i` here too: `quarantine debug 2 -i my_script.py`)*
 
 The single biggest time-saver: you never have to *reproduce* the bug. The bug's exact input is sitting on disk.
 
