@@ -1,5 +1,9 @@
 # 🏥 quarantine
 
+[![PyPI version](https://img.shields.io/pypi/v/quarantine-py.svg)](https://pypi.org/project/quarantine-py/)
+[![Python versions](https://img.shields.io/pypi/pyversions/quarantine-py.svg)](https://pypi.org/project/quarantine-py/)
+[![CI](https://github.com/halcyon-past/quarantine/actions/workflows/ci.yml/badge.svg)](https://github.com/halcyon-past/quarantine/actions/workflows/ci.yml)
+
 **When one bad item crashes your loop of 10,000 — don't crash. Set it aside, keep going, fix it later.**
 
 ```bash
@@ -389,5 +393,7 @@ Yes — that's exactly the pattern, ported from message-queue infrastructure to 
 Yes — writes are atomic and the folder is append-only per item.
 
 ---
+
+**Created by [Aritro Saha](https://aritro.cloud)**
 
 *Made for everyone whose overnight job died at item 5,247.*
