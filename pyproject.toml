@@ -47,10 +47,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/quarantine-py/quarantine"
-Source = "https://github.com/quarantine-py/quarantine"
-Issues = "https://github.com/quarantine-py/quarantine/issues"
-Changelog = "https://github.com/quarantine-py/quarantine/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/halcyon-past/quarantine"
+Source = "https://github.com/halcyon-past/quarantine"
+Issues = "https://github.com/halcyon-past/quarantine/issues"
+Changelog = "https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md"
 
 [project.scripts]
 quarantine = "quarantine.cli:main"
