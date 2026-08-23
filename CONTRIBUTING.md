@@ -25,6 +25,17 @@ pytest --cov --cov-report=term-missing
 All three must pass, on Python 3.10 through 3.13, on Linux, macOS and Windows.
 Coverage must stay at or above 90%.
 
+## Git Flow and Pull Requests
+
+To maintain stability across environments, we enforce strict repository rules:
+
+1. **Protected Branches**: Direct commits to `main`, `dev`, and `uat` are blocked. You must use a Pull Request.
+2. **Branch Naming**: Your PR branches must follow one of these naming conventions, or the CI checks will fail:
+   - `feature/<target-branch>/<feature-name>` (e.g. `feature/dev/add-retry-logic`)
+   - `hotfix/<feature-name>` (e.g. `hotfix/fix-type-error`)
+3. **Mandatory Tests**: All CI jobs (tests across all OS/Python matrices, linting, and building) must pass completely before a PR can be merged.
+4. **Mandatory Reviews**: At least 1 approving review from the Code Owner (`@halcyon-past`) is required to merge a PR.
+
 ## Ground rules for changes
 
 - **Never lose a failure.** Any code path that catches an exception must either
