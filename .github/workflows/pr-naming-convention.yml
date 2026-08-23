@@ -1,0 +1,22 @@
+name: Check PR Branch Name
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  check-branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Branch Name
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          echo "Checking branch name: $BRANCH_NAME"
+          
+          # Check for feature/<target-branch>/<feature-name> or hotfix/<feature-name>
+          if [[ ! "$BRANCH_NAME" =~ ^(feature/(dev|uat|main)/.+|hotfix/.+)$ ]]; then
+            echo "::error::Invalid branch name. Branch name must follow the convention: feature/<dev|uat|main>/<feature-name> OR hotfix/<feature-name>"
+            exit 1
+          fi
+          
+          echo "Branch name is valid!"
