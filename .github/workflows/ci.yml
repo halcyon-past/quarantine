@@ -74,3 +74,16 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  all-tests-pass:
+    if: always()
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if all jobs passed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::One or more CI jobs failed or were cancelled."
+          exit 1
+      - name: All good!
+        run: echo "All CI jobs passed."
