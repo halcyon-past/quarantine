@@ -359,15 +359,15 @@ quarantined themselves):
 
 | | |
 |---|---|
-| [docs/installation.md](docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
-| [docs/usage.md](docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |
-| [docs/cli.md](docs/cli.md) | Every command, flag and exit code, with output samples. |
-| [docs/api.md](docs/api.md) | Complete Python API reference. |
-| [docs/on-disk-format.md](docs/on-disk-format.md) | What is in `.quarantine/`, and the guarantees about it. |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | "It skipped my item", "retry says it cannot import", and friends. |
-| [docs/faq.md](docs/faq.md) | Longer answers to the questions below. |
-| [CHANGELOG.md](CHANGELOG.md) | What changed, and when. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, the checks, and the ground rules for changes. |
+| [docs/installation.md](https://github.com/halcyon-past/quarantine/blob/main/docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
+| [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |
+| [docs/cli.md](https://github.com/halcyon-past/quarantine/blob/main/docs/cli.md) | Every command, flag and exit code, with output samples. |
+| [docs/api.md](https://github.com/halcyon-past/quarantine/blob/main/docs/api.md) | Complete Python API reference. |
+| [docs/on-disk-format.md](https://github.com/halcyon-past/quarantine/blob/main/docs/on-disk-format.md) | What is in `.quarantine/`, and the guarantees about it. |
+| [docs/troubleshooting.md](https://github.com/halcyon-past/quarantine/blob/main/docs/troubleshooting.md) | "It skipped my item", "retry says it cannot import", and friends. |
+| [docs/faq.md](https://github.com/halcyon-past/quarantine/blob/main/docs/faq.md) | Longer answers to the questions below. |
+| [CHANGELOG.md](https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md) | What changed, and when. |
+| [CONTRIBUTING.md](https://github.com/halcyon-past/quarantine/blob/main/CONTRIBUTING.md) | Setup, the checks, and the ground rules for changes. |
 
 ## When NOT to use quarantine
 
