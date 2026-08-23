@@ -3,7 +3,7 @@
 **When one bad item crashes your loop of 10,000 — don't crash. Set it aside, keep going, fix it later.**
 
 ```bash
-pip install quarantine
+pip install quarantine-py
 ```
 
 ```python
@@ -97,14 +97,14 @@ Your job finishes. The sick items wait for you, with their full medical charts.
 ## Installation
 
 ```bash
-pip install quarantine
+pip install quarantine-py
 ```
 
 That is the whole install story. Some alternatives, if you prefer:
 
 ```bash
-uv add quarantine            # uv projects
-uv pip install quarantine    # uv, without a project
+uv add quarantine-py            # uv projects
+uv pip install quarantine-py    # uv, without a project
 python -m pip install --user quarantine
 pip install git+https://github.com/quarantine-py/quarantine   # unreleased main
 ```

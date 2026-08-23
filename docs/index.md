@@ -18,7 +18,7 @@ to a folder — input, traceback, metadata — and you deal with it later.
 ## The shortest possible tour
 
 ```bash
-pip install quarantine
+pip install quarantine-py
 ```
 
 ```python

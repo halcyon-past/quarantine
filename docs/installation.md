@@ -16,14 +16,14 @@ add to someone else's crowded environment without a resolver argument.
 ## Install from PyPI
 
 ```bash
-pip install quarantine
+pip install quarantine-py
 ```
 
 With [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv add quarantine            # inside a uv project
-uv pip install quarantine    # standalone
+uv add quarantine-py            # inside a uv project
+uv pip install quarantine-py    # standalone
 ```
 
 Pin it like any other library:

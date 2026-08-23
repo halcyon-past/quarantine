@@ -126,7 +126,7 @@ def test_readme_still_covers_every_section_of_the_original_spec():
     for heading in re.findall(r"^#{2,3} .+$", spec, flags=re.MULTILINE):
         assert heading in README, f"README lost: {heading}"
     for promise in [
-        "pip install quarantine",
+        "pip install quarantine-py",
         "@quarantine",
         "quarantine retry",
         "quarantine debug 2",

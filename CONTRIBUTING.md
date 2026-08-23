@@ -37,7 +37,7 @@ Coverage must stay at or above 90%.
   add a file to a record, add it before the rename.
 - **Redact before writing, not after.** `redact_call()` runs before anything
   reaches the disk, and never mutates the caller's object.
-- **No runtime dependencies.** `pip install quarantine` should stay a
+- **No runtime dependencies.** `pip install quarantine-py` should stay a
   no-questions-asked install in someone else's messy environment.
 - **Tests describe behaviour**, not implementation: `test_loop_survives_a_bad_item`,
   not `test_wrapper_calls_store_add`.
