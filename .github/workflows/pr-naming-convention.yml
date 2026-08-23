@@ -14,7 +14,7 @@ jobs:
           echo "Checking branch name: $BRANCH_NAME"
           
           # Check for feature/<target-branch>/<feature-name> or hotfix/<feature-name>
-          if [[ ! "$BRANCH_NAME" =~ ^(feature/(dev|uat|main)/.+|hotfix/.+)$ ]]; then
+          if [[ ! "$BRANCH_NAME" =~ ^(feature/(dev|uat|main)/.+|hotfix/.+|dev|uat|main)$ ]]; then
             echo "::error::Invalid branch name. Branch name must follow the convention: feature/<dev|uat|main>/<feature-name> OR hotfix/<feature-name>"
             exit 1
           fi
