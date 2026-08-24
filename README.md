@@ -398,3 +398,7 @@ Yes — writes are atomic and the folder is append-only per item.
 **Created by [Aritro Saha](https://aritro.cloud)**
 
 *Made for everyone whose overnight job died at item 5,247.*
+
+
+## Developer Reference #13
+Resolves issue #13: Feature Request: Built-in Transient Retries (Before Quarantining).
