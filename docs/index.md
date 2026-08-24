@@ -9,6 +9,7 @@ to a folder — input, traceback, metadata — and you deal with it later.
 |---|---|
 | [Installation](installation.md) | Installing, verifying, choosing where the folder lives, upgrading. |
 | [Usage guide](usage.md) | You want the full picture: options, async, threads, retrying, alerting, recipes. |
+| [Practical examples](examples.md) | You want to see real-world scenarios and what gets created behind the scenes. |
 | [CLI reference](cli.md) | You are at a terminal with a folder full of failures. |
 | [API reference](api.md) | You are writing code against it. |
 | [On-disk format](on-disk-format.md) | You want to read, ship or process `.quarantine/` yourself. |
