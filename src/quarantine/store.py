@@ -85,7 +85,7 @@ class FileLock:
         while True:
             try:
                 self._fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            except FileExistsError:
+            except (FileExistsError, PermissionError):
                 if self._break_if_stale() or time.monotonic() < deadline:
                     time.sleep(delay)
                     delay = min(delay * 2, 0.05)
