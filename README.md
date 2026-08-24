@@ -109,8 +109,8 @@ That is the whole install story. Some alternatives, if you prefer:
 ```bash
 uv add quarantine-py            # uv projects
 uv pip install quarantine-py    # uv, without a project
-python -m pip install --user quarantine
-pip install git+https://github.com/quarantine-py/quarantine   # unreleased main
+python -m pip install --user quarantine-py
+pip install git+https://github.com/halcyon-past/quarantine   # unreleased main
 ```
 
 **Requirements**
