@@ -38,6 +38,8 @@ def get_quarantine(
     exclude: Any = (),
     halt_after: int | None = DEFAULT_HALT_AFTER,
     max_items: int | None = DEFAULT_MAX_ITEMS,
+    retries:int = 0,
+    backoff:float = 0.0,
     redact: Iterable[str] = (),
     on_quarantine: Callable[[Record], None] | None = None,
     skip_known_bad: bool = True,
@@ -55,11 +57,14 @@ def get_quarantine(
         exclude=exclude,
         halt_after=halt_after,
         max_items=max_items,
+        retries=retries,
+        backoff=backoff,
         redact=tuple(redact),
         on_quarantine=on_quarantine,
         skip_known_bad=skip_known_bad,
         report=report,
         verbose=verbose,
+        
     )
     with _registry_lock:
         instance = _registry.get(config)
@@ -83,11 +88,14 @@ def quarantine(
     exclude: Any = ...,
     halt_after: int | None = ...,
     max_items: int | None = ...,
+    retries: int = ...,
+    backoff : float = ...,
     redact: Iterable[str] = ...,
     on_quarantine: Callable[[Record], None] | None = ...,
     skip_known_bad: bool = ...,
     report: bool = ...,
     verbose: bool = ...,
+    
 ) -> Callable[[F], F]: ...
 
 
@@ -100,6 +108,8 @@ def quarantine(
     exclude: Any = (),
     halt_after: int | None = DEFAULT_HALT_AFTER,
     max_items: int | None = DEFAULT_MAX_ITEMS,
+    retries: int = 0,
+    backoff: float = 0.0,
     redact: Iterable[str] = (),
     on_quarantine: Callable[[Record], None] | None = None,
     skip_known_bad: bool = True,
@@ -149,6 +159,8 @@ def quarantine(
         exclude=exclude,
         halt_after=halt_after,
         max_items=max_items,
+        retries=retries,
+        backoff=backoff,
         redact=redact,
         on_quarantine=on_quarantine,
         skip_known_bad=skip_known_bad,

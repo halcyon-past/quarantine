@@ -56,6 +56,8 @@ class Config:
     exclude: tuple[type[BaseException], ...] = ()
     halt_after: int | None = DEFAULT_HALT_AFTER
     max_items: int | None = DEFAULT_MAX_ITEMS
+    retries: int = 0
+    backoff : float = 0.0
     redact: tuple[str, ...] = ()
     on_quarantine: Callable[[Record], None] | None = None
     skip_known_bad: bool = True
@@ -162,6 +164,8 @@ class Quarantine:
         exclude: Any = (),
         halt_after: int | None = DEFAULT_HALT_AFTER,
         max_items: int | None = DEFAULT_MAX_ITEMS,
+        retries: int = 0,
+        backoff: float = 0.0,
         redact: Iterable[str] = (),
         on_quarantine: Callable[[Record], None] | None = None,
         skip_known_bad: bool = True,
@@ -176,6 +180,8 @@ class Quarantine:
                 exclude=exclude,
                 halt_after=halt_after,
                 max_items=max_items,
+                retries=retries,
+                backoff=backoff,
                 redact=tuple(redact),
                 on_quarantine=on_quarantine,
                 skip_known_bad=skip_known_bad,
@@ -234,12 +240,24 @@ class Quarantine:
         target = unwrap_quarantined(fn)
         prepared = self._precheck(target, args, kwargs)
         if prepared is SKIPPED:
-            return SKIPPED
-        try:
-            result = target(*args, **kwargs)
-        except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
-            return self._on_failure(target, exc, args, kwargs, prepared)
-        return self._on_success(result)
+          return SKIPPED
+
+        attempts = self.config.retries + 1
+
+        for attempt in range(attempts):
+            try:
+                result = target(*args, **kwargs)
+            except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
+                if attempt < self.config.retries and self._should_quarantine(exc):
+                    if self.config.backoff:
+                        import time
+                        time.sleep(self.config.backoff)
+                    continue
+                return self._on_failure(target, exc, args, kwargs, prepared)
+
+            return self._on_success(result)
+
+        raise AssertionError("retry loop exited unexpectedly")
 
     async def acall(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """``await`` *fn*, quarantining a failure instead of raising it."""
