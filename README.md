@@ -398,3 +398,7 @@ Yes — writes are atomic and the folder is append-only per item.
 **Created by [Aritro Saha](https://aritro.cloud)**
 
 *Made for everyone whose overnight job died at item 5,247.*
+
+
+## Developer Reference #12
+Resolves issue #12: Feature Request: Local Web Dashboard (quarantine ui).
