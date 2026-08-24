@@ -30,18 +30,18 @@ Pin it like any other library:
 
 ```
 # requirements.txt
-quarantine~=0.1
+quarantine-py~=0.1
 ```
 
 ```toml
 # pyproject.toml
-dependencies = ["quarantine>=0.1,<0.2"]
+dependencies = ["quarantine-py>=0.1,<0.2"]
 ```
 
 ## Install for development, or from source
 
 ```bash
-git clone https://github.com/quarantine-py/quarantine
+git clone https://github.com/halcyon-past/quarantine
 cd quarantine
 python -m venv .venv
 . .venv/bin/activate          # Windows: .venv\Scripts\activate
@@ -51,7 +51,7 @@ pip install -e ".[dev]"       # the package plus pytest, ruff, mypy
 Straight from git, without cloning:
 
 ```bash
-pip install "git+https://github.com/quarantine-py/quarantine"
+pip install "git+https://github.com/halcyon-past/quarantine"
 ```
 
 ## Verify the install
@@ -61,9 +61,9 @@ command-line tool. Check both:
 
 ```bash
 $ python -c "import quarantine; print(quarantine.__version__)"
-0.1.0
+0.1.2
 $ quarantine --version
-quarantine 0.1.0
+quarantine 0.1.2
 ```
 
 If the command is not on your `PATH` — usually after a `pip install --user`,
@@ -133,8 +133,8 @@ payloads, API responses — and they should not end up in a commit:
 ## Upgrading and uninstalling
 
 ```bash
-pip install --upgrade quarantine
-pip uninstall quarantine
+pip install --upgrade quarantine-py
+pip uninstall quarantine-py
 ```
 
 Uninstalling leaves any `.quarantine/` folders alone; they are plain files, so
