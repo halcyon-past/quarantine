@@ -11,6 +11,7 @@ The most common use case: processing a large list of items (like a CSV or a data
 ```python
 from quarantine import quarantine
 
+
 # 1. Simply decorate the function that processes a single item
 @quarantine
 def process_user(user_data: dict):
@@ -18,15 +19,17 @@ def process_user(user_data: dict):
     email = user_data["email"].lower()
     # ... process and save ...
 
+
 def main():
     users = [
         {"name": "Alice", "email": "alice@example.com"},
-        {"name": "Bob"}, # Missing email! This will fail.
-        {"name": "Charlie", "email": "charlie@example.com"}
+        {"name": "Bob"},  # Missing email! This will fail.
+        {"name": "Charlie", "email": "charlie@example.com"},
     ]
-    
+
     for u in users:
         process_user(u)
+
 
 if __name__ == "__main__":
     main()
@@ -46,17 +49,20 @@ Instead of the script dying on Bob, it prints a clean stderr summary at the end:
 import asyncio
 from quarantine import quarantine
 
+
 @quarantine
 async def fetch_and_parse(url: str):
     # Imagine hitting a 500 error or a malformed DOM here
     raise ValueError(f"Failed to parse {url}")
 
+
 async def main():
     urls = ["https://example.com/1", "https://example.com/2"]
-    
+
     # Run them all concurrently
     tasks = [fetch_and_parse(url) for url in urls]
     await asyncio.gather(*tasks)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -68,6 +74,7 @@ If you process sensitive data (API keys, passwords, PII), you don't want them wr
 
 ```python
 from quarantine import quarantine
+
 
 @quarantine(redact=["password", "api_key"])
 def login(payload: dict):
@@ -81,6 +88,7 @@ Sometimes you don't want to extract a chunk of logic into a separate function ju
 
 ```python
 from quarantine import shield
+
 
 def process_batch(batch_of_items):
     # Shield iterates over the items safely
