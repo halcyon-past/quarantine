@@ -40,6 +40,40 @@ def test_fixing_the_code_recovers_the_records(q, module):
     assert q.stats.recovered == 2
 
 
+def test_transient_failure_is_retried_before_quarantine(q):
+    q = q.replace(retries=2)
+    attempts = 0
+
+    def flaky():
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise TimeoutError("temporary failure")
+        return "success"
+
+    decorated = q.wrap(flaky)
+    assert decorated() == "success"
+    assert attempts == 3
+    assert q.records() == []
+
+
+async def test_transient_failure_is_retried_before_quarantine_async(q):
+    q = q.replace(retries=2, backoff=0.01)
+    attempts = 0
+
+    async def flaky():
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise TimeoutError("temporary failure")
+        return "success"
+
+    decorated = q.wrap(flaky)
+    assert await decorated() == "success"
+    assert attempts == 3
+    assert q.records() == []
+
+
 def test_a_partial_fix_keeps_what_still_fails(q, module):
     q.call(module.load, "bad")
     q.call(module.load, "worse")

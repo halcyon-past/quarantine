@@ -77,6 +77,9 @@ Every option is optional. These are the defaults:
     exclude=(),  # what to let through anyway
     halt_after=50,  # consecutive-failure circuit breaker
     max_items=10_000,  # cap on the folder
+    retries=2,         # retry transient failures
+    backoff=0.5,       # delay between retries
+
     redact=(),  # field names to scrub before saving
     on_quarantine=None,  # callback for each new record
     skip_known_bad=True,  # skip inputs already quarantined
@@ -173,6 +176,9 @@ max_items.
 ```
 
 Successful retries free capacity again. `max_items=None` removes the cap.
+    retries=2,         # retry transient failures
+    backoff=0.5,       # delay between retries
+
 
 ## Redacting secrets
 
