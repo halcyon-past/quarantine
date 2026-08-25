@@ -23,6 +23,7 @@ from .record import Record
 from .reporting import columnize, emit
 from .resolve import ResolutionError, resolve_function, unwrap_quarantined
 from .store import Store, default_dir
+from .ui import start_server
 
 __all__ = ["main"]
 
@@ -116,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     retry.add_argument("--json", action="store_true", help="machine-readable output")
     retry.set_defaults(handler=cmd_retry)
+
+    ui = subs.add_parser("ui", help="start a local web dashboard to view records")
+    _add_dir(ui)
+    ui.add_argument("--port", type=int, default=8080, help="port to bind to (default: 8080)")
+    ui.set_defaults(handler=cmd_ui)
 
     debug = subs.add_parser("debug", help="open a debugger on a quarantined item")
     _add_dir(debug)
@@ -479,6 +485,11 @@ def cmd_reindex(args: argparse.Namespace) -> int:
             err(f"quarantine: {problem}")
         return EXIT_PROBLEM
     return EXIT_OK
+
+
+def cmd_ui(args: argparse.Namespace) -> int:
+    """Start the local web dashboard."""
+    return start_server(args.port, Path(args.dir) if args.dir else None)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
