@@ -98,6 +98,17 @@ def process_batch(batch_of_items):
         print(f"Processed {item}")
 ```
 
+## 5. The Local Web Dashboard
+
+If you have accumulated several errors and want to inspect them comfortably, you can spin up a local UI dashboard without installing any extra dependencies:
+
+```bash
+quarantine ui
+```
+
+Opening `http://localhost:8080` in your browser will display a clean table of all failures. You can click into individual records to view the syntax-highlighted `input.json` and tracebacks, and even click **Retry** directly from the UI once you have fixed the underlying bug.
+
+
 ## What Gets Created? (The File Structure)
 
 When an item is quarantined, a new `.quarantine/` directory is created in your current working directory. The structure looks like this:
