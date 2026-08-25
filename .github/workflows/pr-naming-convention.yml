@@ -13,6 +13,12 @@ jobs:
           BRANCH_NAME="${{ github.head_ref }}"
           echo "Checking branch name: $BRANCH_NAME"
           
+          IS_FORK="${{ github.event.pull_request.head.repo.fork }}"
+          if [[ "$IS_FORK" == "true" ]]; then
+            echo "PR is from a forked repository. Skipping strict branch naming convention check."
+            exit 0
+          fi
+          
           # Check for feature/<target-branch>/<feature-name> or hotfix/<feature-name>
           if [[ ! "$BRANCH_NAME" =~ ^(feature/(dev|uat|main)/.+|hotfix/.+|dev|uat|main)$ ]]; then
             echo "::error::Invalid branch name. Branch name must follow the convention: feature/<dev|uat|main>/<feature-name> OR hotfix/<feature-name>"

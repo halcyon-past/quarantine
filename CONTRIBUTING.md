@@ -27,14 +27,16 @@ Coverage must stay at or above 90%.
 
 ## Git Flow and Pull Requests
 
-To maintain stability across environments, we enforce strict repository rules:
+To maintain stability across environments, we enforce strict repository rules and promotion flows:
 
-1. **Protected Branches**: Direct commits to `main`, `dev`, and `uat` are blocked. You must use a Pull Request.
-2. **Branch Naming**: Your PR branches must follow one of these naming conventions, or the CI checks will fail:
+1. **Target Branch**: All feature Pull Requests **must** be raised against the `dev` branch. The only exception is for critical production fixes, which may be raised against `main` as a `hotfix`.
+2. **Promotion Flow**: Do not raise PRs against `uat` or `main` for new features. The maintainers will handle promoting code from `dev` -> `uat` -> `main` (prod).
+3. **Protected Branches**: Direct commits to `main`, `dev`, and `uat` are blocked. You must use a Pull Request.
+4. **Branch Naming**: Your PR branches must follow one of these naming conventions, or the CI checks will fail (unless you are submitting a PR from a fork):
    - `feature/<target-branch>/<feature-name>` (e.g. `feature/dev/add-retry-logic`)
    - `hotfix/<feature-name>` (e.g. `hotfix/fix-type-error`)
-3. **Mandatory Tests**: All CI jobs (tests across all OS/Python matrices, linting, and building) must pass completely before a PR can be merged.
-4. **Mandatory Reviews**: At least 1 approving review from the Code Owner (`@halcyon-past`) is required to merge a PR.
+5. **Mandatory Tests**: All CI jobs (tests, linting, building) must pass completely before a PR can be merged.
+6. **Mandatory Reviews**: At least 1 approving review from the Code Owner (`@halcyon-past`) is required to merge a PR.
 
 ## Ground rules for changes
 
