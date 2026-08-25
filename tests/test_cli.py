@@ -382,3 +382,24 @@ def test_python_m_quarantine_is_wired_up(monkeypatch, capsys):
         runpy.run_module("quarantine", run_name="__main__")
     assert caught.value.code == EXIT_USAGE
     assert "usage: quarantine" in capsys.readouterr().out
+
+
+def test_ui_command(monkeypatch, capsys):
+
+    called_with_port = None
+    called_with_dir = None
+
+    def mock_start_server(port, d):
+        nonlocal called_with_port, called_with_dir
+        called_with_port = port
+        called_with_dir = d
+        return 0
+
+    from quarantine import cli
+
+    monkeypatch.setattr(cli, "start_server", mock_start_server)
+
+    code = main(["ui", "--port", "9090", "--dir", "custom-dir"])
+    assert code == 0
+    assert called_with_port == 9090
+    assert str(called_with_dir) == "custom-dir"
