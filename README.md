@@ -273,6 +273,8 @@ you can pipe them somewhere useful.
 | `quarantine clear [ID...]` | Delete records. With no ids it clears everything and asks first; `-y/--yes` skips the prompt. `rm` works too. |
 | `quarantine stats` | Counts by function and by error type, plus how much disk the folder is using. |
 | `quarantine reindex` | Rebuild `index.json` from the record folders and sweep up leftover temp files from a hard crash. |
+- `quarantine ui` spins up a local web dashboard to view tracebacks visually.
+
 
 Exit codes, for scripts and CI:
 

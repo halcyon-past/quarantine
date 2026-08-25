@@ -212,3 +212,17 @@ Human output goes to **stdout**; warnings and the end-of-run summary go to
 **stderr**. On a console that cannot encode `✓` (a plain Windows `cmd`, for
 instance) every glyph falls back to ASCII — `OK`, `FAIL`, `->` — instead of
 printing mojibake or raising.
+
+## `quarantine ui`
+
+Starts a local, read-only web dashboard to view quarantined records in your browser.
+This provides a cleaner interface for inspecting tracebacks and payloads than `quarantine show`.
+
+```bash
+quarantine ui
+quarantine ui --port 9090
+```
+
+### Options
+
+* `--port PORT`: The port to bind the local HTTP server to (defaults to `8080`).

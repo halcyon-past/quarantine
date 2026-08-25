@@ -98,6 +98,35 @@ def process_batch(batch_of_items):
         print(f"Processed {item}")
 ```
 
+## 5. The Local Web Dashboard
+
+If you have accumulated several errors and want to inspect them comfortably, you can spin up a local UI dashboard without installing any extra dependencies:
+
+```bash
+quarantine ui
+```
+
+Opening `http://localhost:8080` in your browser will display a clean table of all failures. You can click into individual records to view the syntax-highlighted `input.json` and tracebacks, and even click **Retry** directly from the UI once you have fixed the underlying bug.
+
+
+## 6. Transient Retries
+
+If you are dealing with a flaky network or a rate-limited API, you can instruct `quarantine` to retry failures a few times automatically before giving up and moving them to the `.quarantine/` folder.
+
+```python
+from quarantine import quarantine
+import httpx
+
+
+@quarantine(retries=3, backoff=1.5)
+def fetch_data(url: str):
+    # If the network drops, it will wait 1.5s and retry.
+    # After 3 failed retries (4 attempts total), it gives up and quarantines it.
+    response = httpx.get(url)
+    response.raise_for_status()
+    return response.json()
+```
+
 ## What Gets Created? (The File Structure)
 
 When an item is quarantined, a new `.quarantine/` directory is created in your current working directory. The structure looks like this:
