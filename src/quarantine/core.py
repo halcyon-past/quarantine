@@ -7,6 +7,7 @@ import contextlib
 import functools
 import inspect
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -56,6 +57,8 @@ class Config:
     exclude: tuple[type[BaseException], ...] = ()
     halt_after: int | None = DEFAULT_HALT_AFTER
     max_items: int | None = DEFAULT_MAX_ITEMS
+    retries: int = 0
+    backoff: float = 0.0
     redact: tuple[str, ...] = ()
     on_quarantine: Callable[[Record], None] | None = None
     skip_known_bad: bool = True
@@ -70,6 +73,10 @@ class Config:
         object.__setattr__(self, "redact", tuple(self.redact))
         _check_positive(self.halt_after, "halt_after")
         _check_positive(self.max_items, "max_items")
+        if self.retries < 0:
+            raise ValueError("retries must be >= 0")
+        if self.backoff < 0:
+            raise ValueError("backoff must be >= 0")
         if self.on_quarantine is not None and not callable(self.on_quarantine):
             raise TypeError("on_quarantine must be callable")
         Redactor(self.redact)  # raises TypeError on non-string field names
@@ -235,11 +242,18 @@ class Quarantine:
         prepared = self._precheck(target, args, kwargs)
         if prepared is SKIPPED:
             return SKIPPED
-        try:
-            result = target(*args, **kwargs)
-        except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
-            return self._on_failure(target, exc, args, kwargs, prepared)
-        return self._on_success(result)
+        attempts = self.config.retries + 1
+        for attempt in range(attempts):
+            try:
+                result = target(*args, **kwargs)
+                return self._on_success(result)
+            except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
+                if attempt < self.config.retries and self._should_quarantine(exc):
+                    if self.config.backoff > 0:
+                        time.sleep(self.config.backoff)
+                    continue
+                return self._on_failure(target, exc, args, kwargs, prepared)
+        raise AssertionError("unreachable")
 
     async def acall(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """``await`` *fn*, quarantining a failure instead of raising it."""
@@ -247,13 +261,20 @@ class Quarantine:
         prepared = self._precheck(target, args, kwargs)
         if prepared is SKIPPED:
             return SKIPPED
-        try:
-            result = target(*args, **kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-        except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
-            return self._on_failure(target, exc, args, kwargs, prepared)
-        return self._on_success(result)
+        attempts = self.config.retries + 1
+        for attempt in range(attempts):
+            try:
+                result = target(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
+                return self._on_success(result)
+            except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
+                if attempt < self.config.retries and self._should_quarantine(exc):
+                    if self.config.backoff > 0:
+                        await asyncio.sleep(self.config.backoff)
+                    continue
+                return self._on_failure(target, exc, args, kwargs, prepared)
+        raise AssertionError("unreachable")
 
     # -- inspection -----------------------------------------------------
 

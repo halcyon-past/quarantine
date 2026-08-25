@@ -3,6 +3,11 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [Unreleased]
+
+### Added
+- Added built-in transient retries (`retries` and `backoff` config options) to retry transient failures before committing items to quarantine. Support added for both synchronous and asynchronous functions.
+
 ## [0.1.3] - 2026-08-24
 
 ### Fixed

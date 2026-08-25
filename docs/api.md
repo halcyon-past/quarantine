@@ -17,7 +17,10 @@ see real signatures.
 
 ```python
 quarantine(fn=None, /, *, dir=None, only=(Exception,), exclude=(),
-           halt_after=50, max_items=10_000, redact=(), on_quarantine=None,
+           halt_after=50, max_items=10_000, retries=0, backoff=0.0, redact=(), on_quarantine=None,
+| `retries` | `0` | Attempt the function this many additional times before quarantining. |
+| `backoff` | `0.0` | Seconds to sleep between retries. |
+
            skip_known_bad=True, report=True, verbose=False)
 ```
 
@@ -31,6 +34,9 @@ and on `async def`.
 | `only` | `(Exception,)` | Exception types to quarantine; anything else propagates. A bare class is accepted. |
 | `exclude` | `()` | Exception types to let through even if `only` matches. |
 | `halt_after` | `50` | Raise `SystemicFailure` after this many *consecutive* failures. `None` disables it. |
+| `retries` | `0` | Attempt the function this many additional times before quarantining. |
+| `backoff` | `0.0` | Seconds to sleep between retries. |
+
 | `max_items` | `10_000` | Raise `QuarantineFull` rather than grow the folder past this. `None` disables it. |
 | `redact` | `()` | Field-name patterns (case-insensitive, globs allowed) scrubbed before writing. |
 | `on_quarantine` | `None` | `Callable[[Record], None]`, called after each record is safely written. Exceptions from it are reported, not raised. |
@@ -76,7 +82,10 @@ in your loop *body*, only in the callable it hands work to.
 ## `Quarantine`
 
 ```python
-Quarantine(dir=None, *, only=(Exception,), exclude=(), halt_after=50,
+Quarantine(dir=None, *, only=(Exception,), exclude=(), halt_after=50, max_items=10_000, retries=0, backoff=0.0,
+| `retries` | `0` | Attempt the function this many additional times before quarantining. |
+| `backoff` | `0.0` | Seconds to sleep between retries. |
+
            max_items=10_000, redact=(), on_quarantine=None,
            skip_known_bad=True, report=True, verbose=False, config=None)
 ```
@@ -210,6 +219,9 @@ including by `only=(BaseException,)`.
 |---|---|
 | `QuarantineError` | Base class. |
 | `SystemicFailure` | The `halt_after` breaker tripped. `.count`, `.last_error`; chained from the original exception. |
+| `retries` | `0` | Attempt the function this many additional times before quarantining. |
+| `backoff` | `0.0` | Seconds to sleep between retries. |
+
 | `QuarantineFull` | `max_items` reached. `.max_items`, `.directory`; chained from the original exception, so nothing is lost. |
 | `StorageError` | The folder could not be read or written, or a record is corrupt. |
 | `ResolutionError` | A retry could not import the function a record came from. |
