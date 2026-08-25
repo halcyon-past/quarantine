@@ -3,10 +3,11 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-## [Unreleased]
+## [0.2.0] - 2026-08-25
 
 ### Added
-- Added built-in transient retries (`retries` and `backoff` config options) to retry transient failures before committing items to quarantine. Support added for both synchronous and asynchronous functions.
+- **Local Web Dashboard:** Added a `quarantine ui` CLI command that spins up a lightweight, zero-dependency local web server to view tracebacks and payloads in a clean browser interface, and allows clicking to retry them.
+- **Transient Retries:** Added built-in transient retries (`retries` and `backoff` config options) to retry transient failures before committing items to quarantine. Support added for both synchronous and asynchronous functions.
 
 ## [0.1.3] - 2026-08-24
 
@@ -69,6 +70,8 @@ First release.
   on-disk format, troubleshooting and an FAQ, with tests that fail if the docs
   drift from the code.
 - Full type annotations and a `py.typed` marker.
+
+[0.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.2.0
 
 [0.1.3]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.3
 [0.1.2]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.2
