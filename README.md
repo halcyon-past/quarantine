@@ -215,6 +215,8 @@ Tune it: `@quarantine(halt_after=100)`.
     only=(ValueError, KeyError),  # only quarantine these; others still crash
     halt_after=50,  # consecutive-failure circuit breaker
     max_items=10_000,  # cap disk usage
+    retries=2,  # retry transient failures
+    backoff=0.5,  # delay between retries
     redact=["api_key", "password"],  # scrub these fields before saving inputs
     on_quarantine=my_alert_fn,  # e.g., send a Slack ping
 )
