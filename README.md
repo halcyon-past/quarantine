@@ -6,6 +6,8 @@
 
 **When one bad item crashes your loop of 10,000 — don't crash. Set it aside, keep going, fix it later.**
 
+![The whole workflow in 25 seconds: the run survives 4 bad rows, quarantine list shows them, quarantine retry recovers them](https://raw.githubusercontent.com/halcyon-past/quarantine/main/docs/assets/demo.gif)
+
 ```bash
 pip install quarantine-py
 ```
