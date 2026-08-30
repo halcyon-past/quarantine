@@ -16,6 +16,7 @@ to a folder — input, traceback, metadata — and you deal with it later.
 | [CLI reference](cli.md) | You are at a terminal with a folder full of failures. |
 | [API reference](api.md) | You are writing code against it. |
 | [On-disk format](on-disk-format.md) | You want to read, ship or process `.quarantine/` yourself. |
+| [Remote storage](remote-storage.md) | Your workers are ephemeral and the quarantine should live in S3. |
 | [Observability](observability.md) | You want failures on a dashboard: Prometheus, Datadog, Sentry, logging. |
 | [Benchmarks](benchmarks.md) | You want to know what the decorator costs before putting it in a hot loop. |
 | [Troubleshooting](troubleshooting.md) | Something surprised you. |

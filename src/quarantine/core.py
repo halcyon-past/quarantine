@@ -22,7 +22,7 @@ from .reporting import register_reporter, warn
 from .resolve import ResolutionError, resolve_function, unwrap_quarantined
 from .sentinels import QUARANTINED, SKIPPED
 from .serialize import Call, preview, redact_call, render_input_text, serialize
-from .store import Store, default_dir
+from .store import coerce_dir, default_dir, open_store
 
 __all__ = ["Config", "Quarantine", "RetryResult", "Stats"]
 
@@ -53,7 +53,7 @@ class Config:
     summary line.
     """
 
-    dir: Path = field(default_factory=default_dir)
+    dir: Path | str = field(default_factory=default_dir)
     only: tuple[type[BaseException], ...] = (Exception,)
     exclude: tuple[type[BaseException], ...] = ()
     halt_after: int | None = DEFAULT_HALT_AFTER
@@ -73,7 +73,7 @@ class Config:
 
     def __post_init__(self) -> None:
         """Validate eagerly: a typo in a decorator argument should fail loudly."""
-        object.__setattr__(self, "dir", Path(self.dir))
+        object.__setattr__(self, "dir", coerce_dir(self.dir))
         object.__setattr__(self, "only", _exception_tuple(self.only, "only"))
         object.__setattr__(self, "exclude", _exception_tuple(self.exclude, "exclude"))
         object.__setattr__(self, "redact", tuple(self.redact))
@@ -198,7 +198,7 @@ class Quarantine:
     ) -> None:
         if config is None:
             config = Config(
-                dir=Path(dir) if dir is not None else default_dir(),
+                dir=coerce_dir(dir),
                 only=only,
                 exclude=exclude,
                 halt_after=halt_after,
@@ -217,7 +217,7 @@ class Quarantine:
                 verbose=verbose,
             )
         self.config = config
-        self.store = Store(config.dir)
+        self.store = open_store(config.dir)
         self.stats = Stats()
         self._mutex = threading.RLock()
         self._known: dict[str, int] | None = None
@@ -229,8 +229,8 @@ class Quarantine:
         return f"Quarantine({str(self.config.dir)!r})"
 
     @property
-    def dir(self) -> Path:
-        """The quarantine folder this instance writes to."""
+    def dir(self) -> Path | str:
+        """The quarantine folder (or backend URL) this instance writes to."""
         return self.config.dir
 
     def replace(self, **changes: Any) -> Quarantine:

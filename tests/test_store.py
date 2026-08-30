@@ -272,7 +272,7 @@ def test_default_dir_follows_the_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("QUARANTINE_DIR", str(tmp_path / "elsewhere"))
     assert default_dir() == tmp_path / "elsewhere"
     monkeypatch.delenv("QUARANTINE_DIR")
-    assert default_dir().name == ".quarantine"
+    assert Path(default_dir()).name == ".quarantine"
 
 
 def test_record_when_falls_back_for_unparseable_timestamps():
