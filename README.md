@@ -100,6 +100,8 @@ Your job finishes. The sick items wait for you, with their full medical charts.
 
 ## Installation
 
+Available on PyPI as [**quarantine-py**](https://pypi.org/project/quarantine-py/):
+
 ```bash
 pip install quarantine-py
 ```
@@ -370,8 +372,11 @@ quarantined themselves):
 
 ## Documentation
 
+Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.aritro.cloud)**, or browse the sources:
+
 | | |
 |---|---|
+| [PyPI: quarantine-py](https://pypi.org/project/quarantine-py/) | The released package - versions, wheels, and metadata. |
 | [docs/installation.md](https://github.com/halcyon-past/quarantine/blob/main/docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
 | [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |
 | [docs/examples.md](https://github.com/halcyon-past/quarantine/blob/main/docs/examples.md) | Practical real-world examples and the file structure behind the scenes. |

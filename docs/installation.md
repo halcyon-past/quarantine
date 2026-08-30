@@ -15,6 +15,9 @@ add to someone else's crowded environment without a resolver argument.
 
 ## Install from PyPI
 
+The package lives at
+[pypi.org/project/quarantine-py](https://pypi.org/project/quarantine-py/):
+
 ```bash
 pip install quarantine-py
 ```
