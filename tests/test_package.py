@@ -45,7 +45,7 @@ def test_no_runtime_dependencies():
 
 def test_defaults_match_the_documentation():
     config = Config()
-    assert config.dir.name == ".quarantine"
+    assert Path(config.dir).name == ".quarantine"
     assert DEFAULT_HALT_AFTER == 50
     assert "halt_after=50" in README
     assert DEFAULT_MAX_ITEMS == 10_000
