@@ -381,6 +381,7 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | [docs/installation.md](https://github.com/halcyon-past/quarantine/blob/main/docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
 | [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |
 | [docs/examples.md](https://github.com/halcyon-past/quarantine/blob/main/docs/examples.md) | Practical real-world examples and the file structure behind the scenes. |
+| [docs/recipes.md](https://github.com/halcyon-past/quarantine/blob/main/docs/recipes.md) | Framework recipes: a pandas ETL job, a web scraper, an Airflow task, a FastAPI background worker. |
 | [docs/cli.md](https://github.com/halcyon-past/quarantine/blob/main/docs/cli.md) | Every command, flag and exit code, with output samples. |
 | [docs/api.md](https://github.com/halcyon-past/quarantine/blob/main/docs/api.md) | Complete Python API reference. |
 | [docs/on-disk-format.md](https://github.com/halcyon-past/quarantine/blob/main/docs/on-disk-format.md) | What is in `.quarantine/`, and the guarantees about it. |
