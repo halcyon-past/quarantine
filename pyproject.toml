@@ -78,6 +78,8 @@ path = "src/quarantine/_version.py"
 packages = ["src/quarantine"]
 
 [tool.hatch.build.targets.sdist]
+# Images and deployment artifacts are for GitHub/the docs site, not `pip install`.
+exclude = ["docs/assets", "docs/CNAME"]
 include = [
     "src",
     "tests",
