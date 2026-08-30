@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-08-31
 
 ### Added
 - **Pluggable storage backends with S3 support** ([#11](https://github.com/halcyon-past/quarantine/issues/11)): `dir=` (and `--dir`, and `$QUARANTINE_DIR`) now accepts backend URLs, so `@quarantine(dir="s3://bucket/prefix")` gives a fleet of ephemeral workers one shared quarantine that you inspect and replay from your laptop. Installed as an optional extra (`pip install "quarantine-py[s3]"`) — the core stays zero-dependency. The S3 layout mirrors the local folder per record; ids are claimed with S3 conditional writes and `meta.json` is uploaded last as the commit point, so a reader can never observe a partial record ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). The backend interface (`StorageBackend`, `open_store`, `register_backend`) is public, so third parties can claim their own URL scheme. Setup, credentials and the minimal IAM policy are documented in [docs/remote-storage.md](docs/remote-storage.md).
@@ -96,7 +96,7 @@ First release.
   drift from the code.
 - Full type annotations and a `py.typed` marker.
 
-[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v0.3.0...HEAD
+[1.0.0]: https://github.com/halcyon-past/quarantine/releases/tag/v1.0.0
 [0.3.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.2.0
 
