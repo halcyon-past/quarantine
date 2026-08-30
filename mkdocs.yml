@@ -48,6 +48,7 @@ nav:
   - Installation: installation.md
   - Usage guide: usage.md
   - Practical examples: examples.md
+  - Framework recipes: recipes.md
   - Observability: observability.md
   - CLI reference: cli.md
   - API reference: api.md

@@ -434,6 +434,10 @@ Useful in tests: point it at `tmp_path`, pass `report=False`, and assert on
 
 ## Recipes
 
+Small in-library patterns. For whole-framework integrations — a pandas ETL
+job, a web scraper, an Airflow task, a FastAPI background worker — see
+[framework recipes](recipes.md).
+
 **Fail the job if anything got quarantined**
 
 ```python

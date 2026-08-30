@@ -21,6 +21,7 @@ DOC_FILES = [
     "installation.md",
     "usage.md",
     "examples.md",
+    "recipes.md",
     "cli.md",
     "api.md",
     "on-disk-format.md",

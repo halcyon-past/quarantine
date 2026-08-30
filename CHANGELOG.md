@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Framework recipes** ([#43](https://github.com/halcyon-past/quarantine/issues/43)): a new [docs/recipes.md](docs/recipes.md) with worked, tested integrations — a pandas ETL job, a web scraper, an Airflow task, and a FastAPI background worker. Recipes rather than plugins, so there is no operator to maintain against someone else's release cycle.
+
 ## [0.3.0] - 2026-08-30
 
 ### Added
@@ -89,6 +94,7 @@ First release.
   drift from the code.
 - Full type annotations and a `py.typed` marker.
 
+[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.2.0
 
