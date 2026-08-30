@@ -377,6 +377,7 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | | |
 |---|---|
 | [PyPI: quarantine-py](https://pypi.org/project/quarantine-py/) | The released package - versions, wheels, and metadata. |
+| [Releases](https://github.com/halcyon-past/quarantine/releases) | New versions, with notes. **Watch → Custom → Releases** on this repo to get notified. |
 | [docs/installation.md](https://github.com/halcyon-past/quarantine/blob/main/docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
 | [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |
 | [docs/examples.md](https://github.com/halcyon-past/quarantine/blob/main/docs/examples.md) | Practical real-world examples and the file structure behind the scenes. |

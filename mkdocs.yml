@@ -26,6 +26,15 @@ theme:
     - content.code.copy
     - content.action.edit
 
+extra:
+  social:
+    - icon: simple/pypi
+      link: https://pypi.org/project/quarantine-py/
+      name: quarantine-py on PyPI
+    - icon: simple/github
+      link: https://github.com/halcyon-past/quarantine
+      name: quarantine on GitHub
+
 markdown_extensions:
   - admonition
   - tables
