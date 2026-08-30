@@ -386,6 +386,7 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | [docs/api.md](https://github.com/halcyon-past/quarantine/blob/main/docs/api.md) | Complete Python API reference. |
 | [docs/on-disk-format.md](https://github.com/halcyon-past/quarantine/blob/main/docs/on-disk-format.md) | What is in `.quarantine/`, and the guarantees about it. |
 | [docs/observability.md](https://github.com/halcyon-past/quarantine/blob/main/docs/observability.md) | Wiring the hooks into Prometheus, Datadog, Sentry and plain logging. |
+| [docs/benchmarks.md](https://github.com/halcyon-past/quarantine/blob/main/docs/benchmarks.md) | What the decorator costs when nothing fails, with the methodology. |
 | [docs/troubleshooting.md](https://github.com/halcyon-past/quarantine/blob/main/docs/troubleshooting.md) | "It skipped my item", "retry says it cannot import", and friends. |
 | [docs/faq.md](https://github.com/halcyon-past/quarantine/blob/main/docs/faq.md) | Longer answers to the questions below. |
 | [docs/adr/](https://github.com/halcyon-past/quarantine/blob/main/docs/adr/README.md) | Architecture decision records: why rename-based atomicity, why not JSONL, why pickle-first, and friends. |
