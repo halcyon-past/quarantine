@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 PYTHON ?= python
 
-.PHONY: help install lint format typecheck test regression cover check docs build clean
+.PHONY: help install lint format typecheck test regression cover check docs bench build clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -34,6 +34,9 @@ check: lint typecheck cover  ## Everything CI checks
 
 docs:  ## Build the documentation site strictly (broken links fail)
 	mkdocs build --strict
+
+bench:  ## Measure success-path overhead (needs the [bench] extra)
+	$(PYTHON) benchmarks/bench_overhead.py
 
 build:  ## Build sdist + wheel and validate the metadata
 	$(PYTHON) -m build

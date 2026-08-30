@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Benchmarks** ([#44](https://github.com/halcyon-past/quarantine/issues/44)): a reproducible pyperf benchmark (`benchmarks/bench_overhead.py`, `make bench`, `pip install "quarantine-py[bench]"`) measuring the success-path overhead of `@quarantine` against a bare call and a hand-written `try/except`, with methodology and measured numbers published in [docs/benchmarks.md](docs/benchmarks.md).
 - **Framework recipes** ([#43](https://github.com/halcyon-past/quarantine/issues/43)): a new [docs/recipes.md](docs/recipes.md) with worked, tested integrations — a pandas ETL job, a web scraper, an Airflow task, and a FastAPI background worker. Recipes rather than plugins, so there is no operator to maintain against someone else's release cycle.
 
 ## [0.3.0] - 2026-08-30

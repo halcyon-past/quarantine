@@ -26,6 +26,7 @@ DOC_FILES = [
     "api.md",
     "on-disk-format.md",
     "observability.md",
+    "benchmarks.md",
     "troubleshooting.md",
     "faq.md",
 ]

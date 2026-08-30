@@ -17,6 +17,7 @@ to a folder — input, traceback, metadata — and you deal with it later.
 | [API reference](api.md) | You are writing code against it. |
 | [On-disk format](on-disk-format.md) | You want to read, ship or process `.quarantine/` yourself. |
 | [Observability](observability.md) | You want failures on a dashboard: Prometheus, Datadog, Sentry, logging. |
+| [Benchmarks](benchmarks.md) | You want to know what the decorator costs before putting it in a hot loop. |
 | [Troubleshooting](troubleshooting.md) | Something surprised you. |
 | [FAQ](faq.md) | The "is this just a dead-letter queue?" questions. |
 | [Decision records](adr/README.md) | Why the design is the way it is — atomicity, formats, dependencies. |

@@ -80,7 +80,8 @@ A successful call costs a function call, one lock acquisition for the counters,
 and — with `skip_known_bad=True` — a fingerprint of the input. A *failure* costs
 a few small file writes and an `fsync`, which is the price of a record that
 survives the crash. For very hot loops over large inputs,
-`skip_known_bad=False` removes the per-item hashing.
+`skip_known_bad=False` removes the per-item hashing. Measured numbers and the
+methodology behind them are in [the benchmarks](benchmarks.md).
 
 ## Can I use it with Celery / Airflow / Kafka?
 

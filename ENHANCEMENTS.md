@@ -30,6 +30,7 @@ properly:
 | Multi-process / multi-thread safety, proven with real processes in the test suite | [docs/faq.md](docs/faq.md) |
 | Zero runtime dependencies, full type hints, `py.typed`, strict mypy | [docs/installation.md](docs/installation.md), [ADR 0004](docs/adr/0004-zero-runtime-dependencies.md) |
 | Framework recipes: pandas ETL, web scraping, Airflow, FastAPI ([#43](https://github.com/halcyon-past/quarantine/issues/43)) | [docs/recipes.md](docs/recipes.md) |
+| Reproducible success-path benchmarks with pyperf ([#44](https://github.com/halcyon-past/quarantine/issues/44)) | [docs/benchmarks.md](docs/benchmarks.md) |
 | Architecture decision records | [docs/adr/](docs/adr/README.md) |
 | Security policy, SHA-pinned CI, trusted publishing with attestations | [SECURITY.md](SECURITY.md) |
 
@@ -95,12 +96,6 @@ pip install "quarantine-py[all]"         # everything above
 - The interface is public and documented, so a third party can ship their own
   backend without touching this package.
 - Every backend passes the same regression journeys the local store passes.
-
-## 2. Benchmarks
-
-A published, reproducible answer to "what does the decorator cost me when
-nothing fails?" — overhead per successful call against a bare `try/except`,
-measured with `pyperf`, with the methodology alongside the numbers.
 
 ## Considered and rejected
 
