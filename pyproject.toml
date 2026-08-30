@@ -69,6 +69,7 @@ include = [
     "README.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
+    "ENHANCEMENTS.md",
     "LICENSE",
     "Makefile",
     "pyproject.toml",
