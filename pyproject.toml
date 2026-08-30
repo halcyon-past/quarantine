@@ -49,6 +49,9 @@ dev = [
 docs = [
     "mkdocs-material>=9.5",
 ]
+bench = [
+    "pyperf>=2.6",
+]
 
 [project.urls]
 Homepage = "https://quarantine-py.aritro.cloud"
@@ -71,6 +74,7 @@ include = [
     "src",
     "tests",
     "docs",
+    "benchmarks",
     "README.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",

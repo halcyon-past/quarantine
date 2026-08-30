@@ -53,6 +53,7 @@ nav:
   - CLI reference: cli.md
   - API reference: api.md
   - On-disk format: on-disk-format.md
+  - Benchmarks: benchmarks.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md
   - Decision records:
