@@ -4,6 +4,9 @@ Thanks for looking. This is a small library with a deliberately small surface:
 if a change makes the common case (`@quarantine` on one function) harder to
 understand, it probably belongs in a different package.
 
+Looking for something to work on? [ENHANCEMENTS.md](ENHANCEMENTS.md) is the
+planned roadmap, with the reasoning behind each item.
+
 ## Getting set up
 
 ```bash

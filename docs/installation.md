@@ -19,6 +19,11 @@ add to someone else's crowded environment without a resolver argument.
 pip install quarantine-py
 ```
 
+Releases are built in CI and published to PyPI with [trusted
+publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) - no long-lived
+API keys and no manual uploads sit between the tagged source and the wheel
+you install.
+
 With [uv](https://docs.astral.sh/uv/):
 
 ```bash

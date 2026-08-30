@@ -120,12 +120,13 @@ pip install git+https://github.com/halcyon-past/quarantine   # unreleased main
 | Python | 3.10 or newer (CPython; tested on 3.10 - 3.13) |
 | Runtime dependencies | none - it is standard library only |
 | Operating systems | Linux, macOS, Windows (tested on all three in CI) |
+| Type checking | Fully typed, ships `py.typed` - works with mypy and Pyright out of the box (the codebase itself passes strict mypy) |
 
 Installing also puts a `quarantine` command on your `PATH`. Check both halves:
 
 ```bash
 $ quarantine --version
-quarantine 0.1.0
+quarantine 0.2.0
 $ python -c "import quarantine; print(quarantine.__version__)"
 0.1.0
 ```
@@ -376,6 +377,7 @@ quarantined themselves):
 | [docs/troubleshooting.md](https://github.com/halcyon-past/quarantine/blob/main/docs/troubleshooting.md) | "It skipped my item", "retry says it cannot import", and friends. |
 | [docs/faq.md](https://github.com/halcyon-past/quarantine/blob/main/docs/faq.md) | Longer answers to the questions below. |
 | [CHANGELOG.md](https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md) | What changed, and when. |
+| [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md) | What is coming next - remote storage backends (S3, GCS, Azure, Redis, Databricks), retry upgrades - and why. |
 | [CONTRIBUTING.md](https://github.com/halcyon-past/quarantine/blob/main/CONTRIBUTING.md) | Setup, the checks, and the ground rules for changes. |
 
 ## When NOT to use quarantine
@@ -395,7 +397,7 @@ Yes — that's exactly the pattern, ported from message-queue infrastructure to 
 `@quarantine` works on `async def` too.
 
 **Threads/processes?**
-Yes — writes are atomic and the folder is append-only per item.
+Yes — safe under `threading`, `multiprocessing` and `concurrent.futures`. Writes are atomic, ids cannot collide, and the folder is append-only per item; the test suite proves it with real concurrent processes sharing one folder. Details in [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md).
 
 ---
 
