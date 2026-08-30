@@ -13,4 +13,4 @@ than editing history.
 | [0004](0004-zero-runtime-dependencies.md) | Zero runtime dependencies | Accepted |
 | [0005](0005-stateless-poison-detection.md) | Poison items derived from `attempts`, not a stored flag | Accepted |
 | [0006](0006-hooks-not-servers.md) | Observability through hooks, never an embedded server | Accepted |
-| [0007](0007-object-store-commit-point.md) | Commit point for object-store backends | Proposed |
+| [0007](0007-object-store-commit-point.md) | Commit point for object-store backends | Accepted |

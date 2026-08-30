@@ -25,6 +25,7 @@ DOC_FILES = [
     "cli.md",
     "api.md",
     "on-disk-format.md",
+    "remote-storage.md",
     "observability.md",
     "benchmarks.md",
     "troubleshooting.md",

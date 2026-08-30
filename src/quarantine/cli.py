@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 from collections import Counter
 from collections.abc import Callable, Sequence
-from pathlib import Path
 from typing import Any
 
 from ._version import __version__
@@ -22,7 +20,7 @@ from .errors import QuarantineError, StorageError
 from .record import Record
 from .reporting import columnize, emit
 from .resolve import ResolutionError, resolve_function, unwrap_quarantined
-from .store import Store, default_dir
+from .store import StorageBackend, coerce_dir, open_store
 from .ui import start_server
 
 __all__ = ["main"]
@@ -180,13 +178,13 @@ def build_parser() -> argparse.ArgumentParser:
 # -- helpers -------------------------------------------------------------
 
 
-def _store(args: argparse.Namespace) -> Store:
-    return Store(Path(args.dir) if args.dir else default_dir())
+def _store(args: argparse.Namespace) -> StorageBackend:
+    return open_store(args.dir)
 
 
 def _quarantine(args: argparse.Namespace) -> Quarantine:
     return Quarantine(
-        Path(args.dir) if args.dir else default_dir(),
+        args.dir,
         halt_after=None,
         max_items=None,
         skip_known_bad=False,
@@ -194,7 +192,7 @@ def _quarantine(args: argparse.Namespace) -> Quarantine:
     )
 
 
-def _load(store: Store, function: str | None = None) -> list[Record]:
+def _load(store: StorageBackend, function: str | None = None) -> list[Record]:
     records = store.records()
     for problem in store.problems:
         err(f"quarantine: skipping unreadable record: {problem}")
@@ -210,7 +208,7 @@ def _terminal_width(default: int = 100) -> int:
         return default
 
 
-def _empty_note(store: Store) -> None:
+def _empty_note(store: StorageBackend) -> None:
     if not store.exists():
         out(f"Nothing quarantined - {store.dir} does not exist yet.")
     else:
@@ -431,7 +429,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
     records = _load(store)
     by_function = Counter(r.function for r in records)
     by_error = Counter(r.error_type for r in records)
-    disk = _folder_size(store.dir)
+    disk = store.disk_bytes()
     payload = {
         "dir": str(store.dir),
         "exists": store.exists(),
@@ -461,17 +459,6 @@ def cmd_stats(args: argparse.Namespace) -> int:
     if store.problems:
         out(f"unreadable records: {len(store.problems)} (run `quarantine reindex`)")
     return EXIT_OK
-
-
-def _folder_size(directory: Path) -> int:
-    total = 0
-    for root, _dirs, files in os.walk(directory):
-        for name in files:
-            try:
-                total += (Path(root) / name).stat().st_size
-            except OSError:  # pragma: no cover - racing deletion
-                continue
-    return total
 
 
 KIB = 1024
@@ -506,7 +493,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
 
 def cmd_ui(args: argparse.Namespace) -> int:
     """Start the local web dashboard."""
-    return start_server(args.port, Path(args.dir) if args.dir else None)
+    return start_server(args.port, coerce_dir(args.dir) if args.dir else None)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

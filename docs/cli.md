@@ -14,7 +14,7 @@ Every subcommand accepts:
 
 | Flag | Meaning |
 |---|---|
-| `-d PATH`, `--dir PATH` | Which quarantine folder to work on. Defaults to `$QUARANTINE_DIR`, else `./.quarantine`. |
+| `-d PATH`, `--dir PATH` | Which quarantine to work on: a folder, or a [backend URL](remote-storage.md) like `s3://bucket/prefix`. Defaults to `$QUARANTINE_DIR`, else `./.quarantine`. |
 | `-h`, `--help` | Help for that subcommand. |
 
 ## Exit codes

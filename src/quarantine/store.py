@@ -17,12 +17,14 @@ import contextlib
 import json
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
 import threading
 import time
 import traceback
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -39,7 +41,15 @@ from .record import (
 )
 from .serialize import Serialized
 
-__all__ = ["FileLock", "Store", "default_dir"]
+__all__ = [
+    "FileLock",
+    "StorageBackend",
+    "Store",
+    "coerce_dir",
+    "default_dir",
+    "open_store",
+    "register_backend",
+]
 
 INDEX_NAME = "index.json"
 LOCK_NAME = ".index.lock"
@@ -191,11 +201,154 @@ def _write_atomic(path: Path, data: bytes) -> None:
         raise StorageError(f"cannot write {path}: {exc}") from exc
 
 
-class Store:
+class StorageBackend(ABC):
+    """The surface a storage backend implements.
+
+    :class:`Store` - the local folder - is the reference implementation.
+    Remote backends implement the same methods and claim a URL scheme via
+    :func:`register_backend`. Whatever the transport, two promises must hold:
+    a reader never sees a partial record, and a failed write never silently
+    loses one.
+    """
+
+    dir: Path | str
+    problems: list[str]
+
+    @abstractmethod
+    def exists(self) -> bool:
+        """Whether the store has been created / holds anything readable."""
+
+    @abstractmethod
+    def ensure(self) -> None:
+        """Create whatever the first write needs. Must be idempotent."""
+
+    @abstractmethod
+    def records(self) -> list[Record]:
+        """Every readable record, oldest id first; unreadable ones go to ``problems``."""
+
+    @abstractmethod
+    def get(self, record_id: int) -> Record:
+        """One record by id, or raise :class:`StorageError`."""
+
+    @abstractmethod
+    def count(self) -> int:
+        """How many records are stored."""
+
+    @abstractmethod
+    def add(
+        self,
+        *,
+        function: str,
+        module: str,
+        fingerprint: str,
+        source_file: str,
+        exc: BaseException,
+        serialized: Serialized,
+        input_text: str,
+        preview: str,
+        redacted: Iterable[str] = (),
+    ) -> Record:
+        """Write one new record so that a reader can never observe it half-written."""
+
+    @abstractmethod
+    def update(self, record: Record) -> None:
+        """Rewrite an existing record's metadata."""
+
+    @abstractmethod
+    def write_traceback(self, record: Record, exc: BaseException) -> None:
+        """Replace a record's stored traceback (a retry failed again)."""
+
+    @abstractmethod
+    def delete(self, record: Record | int) -> None:
+        """Remove one record."""
+
+    @abstractmethod
+    def clear(self) -> int:
+        """Remove every record; return how many were removed."""
+
+    @abstractmethod
+    def purge_temp(self) -> int:
+        """Sweep debris from crashed writes; return how many entries were removed."""
+
+    @abstractmethod
+    def rebuild_index(self) -> list[dict[str, Any]]:
+        """Regenerate whatever listing cache the backend keeps; return its rows."""
+
+    @abstractmethod
+    def fingerprints(self) -> dict[str, int]:
+        """Map of ``fingerprint -> record id`` for deduplication."""
+
+    @abstractmethod
+    def disk_bytes(self) -> int:
+        """Total bytes the store occupies (0 if the backend cannot say cheaply)."""
+
+    @property
+    def index_path(self) -> Path | str:
+        """Where the listing cache lives, for human-facing messages."""
+        return f"{self.dir} (live listing)"
+
+    def iter_records(self) -> Iterator[Record]:
+        """Iterate records lazily."""
+        yield from self.records()
+
+
+def build_record(
+    *,
+    function: str,
+    module: str,
+    fingerprint: str,
+    source_file: str,
+    exc: BaseException,
+    serialized: Serialized,
+    input_text: str,
+    preview: str,
+    redacted: Iterable[str] = (),
+) -> tuple[Record, dict[str, bytes]]:
+    """Construct a new :class:`Record` plus its files (metadata excluded).
+
+    Shared by every backend so that a record written to S3 is byte-for-byte
+    the record the local folder would have written. ``meta.json`` is *not*
+    included: writing it is the commit point, so each backend writes it last,
+    in its own atomic way, after the id is known.
+    """
+    now = utcnow()
+    record = Record(
+        id=0,
+        function=function,
+        module=module,
+        fingerprint=fingerprint,
+        source_file=source_file,
+        error_type=type(exc).__name__,
+        error=str(exc),
+        created_at=now,
+        last_failed_at=now,
+        attempts=1,
+        payload_format=serialized.format,
+        payload_lossy=serialized.lossy,
+        payload_reason=serialized.reason,
+        redacted=sorted(redacted),
+        preview=preview,
+        python=platform.python_version(),
+        platform=f"{platform.system()} {platform.release()}".strip(),
+        quarantine_version=__version__,
+        pid=os.getpid(),
+    )
+    tb_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    files: dict[str, bytes] = {
+        TRACEBACK_NAME: tb_text.encode("utf-8"),
+        INPUT_TEXT_NAME: input_text.encode("utf-8"),
+    }
+    payload_name = payload_filename(serialized.format)
+    if payload_name is not None and serialized.data is not None:
+        files[payload_name] = serialized.data
+    return record, files
+
+
+class Store(StorageBackend):
     """Read/write access to one ``.quarantine`` directory."""
 
     def __init__(self, directory: str | os.PathLike[str]) -> None:
-        self.dir = Path(directory)
+        self.dir: Path = Path(directory)
         self._lock = threading.Lock()
         self._id_hint = 0
         self.problems: list[str] = []
@@ -281,37 +434,22 @@ class Store:
     ) -> Record:
         """Write one new record, atomically, and return it."""
         self.ensure()
-        now = utcnow()
-        record = Record(
-            id=0,
+        record, files = build_record(
             function=function,
             module=module,
             fingerprint=fingerprint,
             source_file=source_file,
-            error_type=type(exc).__name__,
-            error=str(exc),
-            created_at=now,
-            last_failed_at=now,
-            attempts=1,
-            payload_format=serialized.format,
-            payload_lossy=serialized.lossy,
-            payload_reason=serialized.reason,
-            redacted=sorted(redacted),
+            exc=exc,
+            serialized=serialized,
+            input_text=input_text,
             preview=preview,
-            python=platform.python_version(),
-            platform=f"{platform.system()} {platform.release()}".strip(),
-            quarantine_version=__version__,
-            pid=os.getpid(),
+            redacted=redacted,
         )
-        tb_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
 
         staging = Path(tempfile.mkdtemp(dir=str(self.dir), prefix=TMP_PREFIX))
         try:
-            (staging / TRACEBACK_NAME).write_text(tb_text, encoding="utf-8")
-            (staging / INPUT_TEXT_NAME).write_text(input_text, encoding="utf-8")
-            name = payload_filename(serialized.format)
-            if name is not None and serialized.data is not None:
-                (staging / name).write_bytes(serialized.data)
+            for name, data in files.items():
+                (staging / name).write_bytes(data)
             final = self._promote(staging, record)
         except OSError as io_error:
             shutil.rmtree(staging, ignore_errors=True)
@@ -465,18 +603,86 @@ class Store:
                 out.setdefault(marker, record_id)
         return out
 
-    def iter_records(self) -> Iterator[Record]:
-        """Iterate records lazily."""
-        yield from self.records()
+    def disk_bytes(self) -> int:
+        """Total bytes of every file in the folder."""
+        total = 0
+        for root, _dirs, names in os.walk(self.dir):
+            for name in names:
+                with contextlib.suppress(OSError):
+                    total += (Path(root) / name).stat().st_size
+        return total
 
 
 def _encode_meta(record: Record) -> bytes:
     return json.dumps(record.to_meta(), indent=2, default=str).encode("utf-8")
 
 
-def default_dir() -> Path:
-    """The default quarantine folder: ``$QUARANTINE_DIR`` or ``./.quarantine``."""
-    return Path(os.environ.get("QUARANTINE_DIR") or ".quarantine")
+# -- backend selection ----------------------------------------------------
+
+_URL_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+
+_BACKENDS: dict[str, Callable[[str], StorageBackend]] = {}
+
+
+def register_backend(scheme: str, factory: Callable[[str], StorageBackend]) -> None:
+    """Register a storage backend for a URL scheme (e.g. ``"s3"``).
+
+    The factory receives the full URL (``s3://bucket/prefix``) and returns a
+    :class:`StorageBackend`. Registering a scheme again replaces the previous
+    factory, so tests and third-party packages can override the built-ins.
+    """
+    _BACKENDS[scheme.lower()] = factory
+
+
+def _scheme_of(value: str) -> str | None:
+    match = _URL_PATTERN.match(value)
+    return value[: value.index("://")].lower() if match else None
+
+
+def coerce_dir(value: str | os.PathLike[str] | None) -> Path | str:
+    """Normalise a ``dir=`` argument: backend URLs stay strings, paths become ``Path``.
+
+    ``Path("s3://bucket")`` would silently collapse the ``//`` and corrupt the
+    URL, which is why this must happen before any ``Path()`` call.
+    """
+    if value is None:
+        return default_dir()
+    if isinstance(value, str) and _scheme_of(value) is not None:
+        return value
+    return Path(value)
+
+
+def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBackend:
+    """Open the right backend for *directory*: a local path or a backend URL."""
+    target = coerce_dir(directory)
+    if isinstance(target, Path):
+        return Store(target)
+    scheme = _scheme_of(target)
+    assert scheme is not None  # coerce_dir only returns str for URLs  # noqa: S101
+    if scheme not in _BACKENDS and scheme == "s3":
+        from .s3_store import S3Store  # noqa: PLC0415 - deferred so boto3 stays optional
+
+        register_backend("s3", S3Store)
+    factory = _BACKENDS.get(scheme)
+    if factory is None:
+        known = ", ".join(sorted({*(_BACKENDS), "s3"})) or "s3"
+        raise StorageError(
+            f"no storage backend for {scheme}:// URLs (available: {known}). "
+            f"Third-party backends can claim a scheme with quarantine.register_backend()."
+        )
+    return factory(target)
+
+
+def default_dir() -> Path | str:
+    """The default quarantine location: ``$QUARANTINE_DIR`` or ``./.quarantine``.
+
+    The environment variable may hold a backend URL (``s3://bucket/prefix``)
+    as well as a path.
+    """
+    value = os.environ.get("QUARANTINE_DIR") or ".quarantine"
+    if _scheme_of(value) is not None:
+        return value
+    return Path(value)
 
 
 def python_banner() -> str:

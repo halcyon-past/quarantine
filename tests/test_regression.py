@@ -382,3 +382,93 @@ def test_a_damaged_folder_heals_with_reindex(tmp_path, qdir, run):
 
     records = json.loads(run("-m", "quarantine", "list", "--json").stdout)
     assert [r["id"] for r in records] == [1, 2]
+
+
+# -- a fleet sharing one S3 quarantine ---------------------------------------
+
+
+S3_WORKER = """
+import os
+import sys
+
+from quarantine import quarantine
+
+URL = os.environ["QUARANTINE_URL"]
+
+
+@quarantine(dir=URL, halt_after=None, report=False, retries=0)
+def process(item):
+    if item.endswith("bad") and os.environ.get("FIXED") != "1":
+        raise ValueError(f"cannot process {item}")
+    return item
+
+
+if __name__ == "__main__":
+    tag = sys.argv[1]
+    for suffix in ["ok-1", "bad", "ok-2"]:
+        process(f"{tag}-{suffix}")
+"""
+
+
+def test_a_fleet_shares_one_s3_quarantine(tmp_path, run):
+    """Issue #11's journey: ephemeral workers quarantine into one bucket,
+    and the failures are inspected and replayed from a different machine."""
+    import boto3
+    from moto.server import ThreadedMotoServer
+
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0)
+    server.start()
+    try:
+        host, port = server.get_host_and_port()
+        endpoint = f"http://{host}:{port}"
+        aws_env = {
+            "AWS_ENDPOINT_URL": endpoint,
+            "AWS_ACCESS_KEY_ID": "testing",
+            "AWS_SECRET_ACCESS_KEY": "testing",
+            "AWS_DEFAULT_REGION": "us-east-1",
+        }
+        boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",
+        ).create_bucket(Bucket="fleet-bucket")
+        url = "s3://fleet-bucket/etl/quarantine"
+        env = {**aws_env, "QUARANTINE_URL": url}
+
+        _write_script(tmp_path, "worker.py", S3_WORKER)
+
+        # 1. two ephemeral "pods" run the job; their local disks tell no tales
+        for tag in ["w1", "w2"]:
+            result = run("worker.py", tag, extra_env=env)
+            assert result.returncode == 0, result.stderr
+
+        # 2. from "the laptop": one shared store holds exactly the two failures
+        listed = run("-m", "quarantine", "list", "--dir", url, "--json", extra_env=env)
+        assert listed.returncode == 0, listed.stderr
+        records = json.loads(listed.stdout)
+        assert sorted(r["error"] for r in records) == [
+            "cannot process w1-bad",
+            "cannot process w2-bad",
+        ]
+        assert [r["id"] for r in records] == [1, 2], "claimed ids never collided"
+
+        # 3. fix the bug, replay only the failures, the bucket empties
+        fixed = run(
+            "-m",
+            "quarantine",
+            "retry",
+            "--dir",
+            url,
+            "--import",
+            "worker.py",
+            extra_env={**env, "FIXED": "1"},
+        )
+        assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+        assert "2 recovered" in fixed.stdout
+
+        after = run("-m", "quarantine", "list", "--dir", url, extra_env=env)
+        assert "Nothing quarantined" in after.stdout
+    finally:
+        server.stop()

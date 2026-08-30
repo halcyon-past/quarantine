@@ -29,7 +29,7 @@ and on `async def`.
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `dir` | `$QUARANTINE_DIR` or `./.quarantine` | Where records are written. |
+| `dir` | `$QUARANTINE_DIR` or `./.quarantine` | Where records are written: a folder, or a [backend URL](remote-storage.md) like `s3://bucket/prefix`. |
 | `only` | `(Exception,)` | Exception types to quarantine; anything else propagates. A bare class is accepted. |
 | `exclude` | `()` | Exception types to let through even if `only` matches. |
 | `halt_after` | `50` | Raise `SystemicFailure` after this many *consecutive* failures. `None` disables it. |
@@ -212,6 +212,18 @@ store.purge_temp()  # sweep .tmp-* staging left by a hard crash
 store.fingerprints()  # {fingerprint: id}
 ```
 
+## Storage backends
+
+`dir=` (and `--dir`, and `$QUARANTINE_DIR`) also accepts a backend URL —
+`dir="s3://bucket/prefix"` stores records in a bucket instead of a folder.
+See [remote storage](remote-storage.md) for setup, credentials and IAM.
+
+| | |
+|---|---|
+| `StorageBackend` | The abstract interface every backend implements; `Store` is the local reference implementation. Subclass it to build your own. |
+| `open_store(dir)` | Open the right backend for a path or URL: `open_store("s3://bucket/prefix")`, `open_store(".quarantine")`. |
+| `register_backend(scheme, factory)` | Claim a URL scheme for a custom backend: `register_backend("mystore", MyStore)`. Registering an existing scheme replaces it. |
+
 ## Exceptions
 
 All of them subclass `QuarantineError`, and none of them is ever quarantined —
@@ -221,9 +233,6 @@ including by `only=(BaseException,)`.
 |---|---|
 | `QuarantineError` | Base class. |
 | `SystemicFailure` | The `halt_after` breaker tripped. `.count`, `.last_error`; chained from the original exception. |
-| `retries` | `0` | Attempt the function this many additional times before quarantining. |
-| `backoff` | `0.0` | Seconds to sleep between retries. |
-
 | `QuarantineFull` | `max_items` reached. `.max_items`, `.directory`; chained from the original exception, so nothing is lost. |
 | `StorageError` | The folder could not be read or written, or a record is corrupt. |
 | `ResolutionError` | A retry could not import the function a record came from. |
