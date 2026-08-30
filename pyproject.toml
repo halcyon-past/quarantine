@@ -88,6 +88,9 @@ addopts = [
 filterwarnings = ["error"]
 asyncio_mode = "auto"
 xfail_strict = true
+markers = [
+    "regression: end-to-end user-journey regression tests (run with `pytest -m regression`)",
+]
 
 # ---------------------------------------------------------------- coverage
 

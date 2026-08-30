@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- **End-to-end regression suite:** `tests/test_regression.py` walks complete user journeys through the public surface only (real subprocesses, the installed CLI, real HTTP against the dashboard) and pins the `--json` shapes and CLI exit codes as contracts. Run it alone with `pytest -m regression` or `make regression`.
+- A dedicated `regression-suite` CI job (Linux and Windows); the `all-tests-pass` aggregate check now requires it, so PRs cannot merge without the journeys passing.
+- `CONTRIBUTING.md` now documents when and how to keep the regression suite up to date.
+
 ## [0.2.0] - 2026-08-25
 
 ### Added
@@ -71,6 +79,7 @@ First release.
   drift from the code.
 - Full type annotations and a `py.typed` marker.
 
+[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.2.0
 
 [0.1.3]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.3
