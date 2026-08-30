@@ -29,6 +29,7 @@ properly:
 | Local web dashboard (`quarantine ui`) | [docs/cli.md](docs/cli.md) |
 | Multi-process / multi-thread safety, proven with real processes in the test suite | [docs/faq.md](docs/faq.md) |
 | Zero runtime dependencies, full type hints, `py.typed`, strict mypy | [docs/installation.md](docs/installation.md), [ADR 0004](docs/adr/0004-zero-runtime-dependencies.md) |
+| Framework recipes: pandas ETL, web scraping, Airflow, FastAPI ([#43](https://github.com/halcyon-past/quarantine/issues/43)) | [docs/recipes.md](docs/recipes.md) |
 | Architecture decision records | [docs/adr/](docs/adr/README.md) |
 | Security policy, SHA-pinned CI, trusted publishing with attestations | [SECURITY.md](SECURITY.md) |
 
@@ -95,15 +96,7 @@ pip install "quarantine-py[all]"         # everything above
   backend without touching this package.
 - Every backend passes the same regression journeys the local store passes.
 
-## 2. Framework recipes
-
-Documentation, not code: worked pages for the places quarantine earns its
-keep — a pandas ETL job, a web scraper, an Airflow task, a FastAPI background
-worker. Recipes rather than plugins, deliberately: an operator or extension
-per framework is a permanent maintenance treadmill against someone else's
-release cycle, while a recipe delivers most of the value at none of the cost.
-
-## 3. Benchmarks
+## 2. Benchmarks
 
 A published, reproducible answer to "what does the decorator cost me when
 nothing fails?" — overhead per successful call against a bare `try/except`,
