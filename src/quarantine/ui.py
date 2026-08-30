@@ -13,7 +13,7 @@ from .store import default_dir
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
     """Handles HTTP requests for the local quarantine dashboard."""
 
-    quarantine_dir: Path | None = None
+    quarantine_dir: Path | str | None = None
 
     def do_GET(self) -> None:
         """Handle GET requests for viewing records."""
@@ -141,7 +141,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 </html>"""
 
 
-def start_server(port: int, d: Path | None = None) -> int:
+def start_server(port: int, d: Path | str | None = None) -> int:
     """Start the lightweight HTTP dashboard."""
     DashboardHandler.quarantine_dir = d if d else default_dir()
     server_address = ("", port)

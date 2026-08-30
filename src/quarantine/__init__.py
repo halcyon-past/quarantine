@@ -39,7 +39,7 @@ from .redact import PLACEHOLDER
 from .resolve import ResolutionError
 from .sentinels import QUARANTINED, SKIPPED, Sentinel, is_quarantined, is_skipped
 from .serialize import Call
-from .store import Store
+from .store import StorageBackend, Store, open_store, register_backend
 
 __all__ = [
     "PLACEHOLDER",
@@ -55,6 +55,7 @@ __all__ = [
     "RetryResult",
     "Sentinel",
     "Stats",
+    "StorageBackend",
     "StorageError",
     "Store",
     "SystemicFailure",
@@ -66,8 +67,10 @@ __all__ = [
     "get_quarantine",
     "is_quarantined",
     "is_skipped",
+    "open_store",
     "quarantine",
     "records",
+    "register_backend",
     "reset",
     "retry",
     "shield",

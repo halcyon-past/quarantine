@@ -10,7 +10,7 @@ from typing import Any, TypeVar, overload
 from .core import DEFAULT_HALT_AFTER, DEFAULT_MAX_ITEMS, Config, Quarantine, RetryResult
 from .record import Record
 from .sentinels import QUARANTINED, SKIPPED
-from .store import default_dir
+from .store import coerce_dir
 
 __all__ = [
     "aretry",
@@ -57,7 +57,7 @@ def get_quarantine(
     script shares one set of counters and prints one summary line.
     """
     config = Config(
-        dir=Path(dir) if dir is not None else default_dir(),
+        dir=coerce_dir(dir),
         only=only,
         exclude=exclude,
         halt_after=halt_after,

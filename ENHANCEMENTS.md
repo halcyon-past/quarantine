@@ -31,6 +31,7 @@ properly:
 | Zero runtime dependencies, full type hints, `py.typed`, strict mypy | [docs/installation.md](docs/installation.md), [ADR 0004](docs/adr/0004-zero-runtime-dependencies.md) |
 | Framework recipes: pandas ETL, web scraping, Airflow, FastAPI ([#43](https://github.com/halcyon-past/quarantine/issues/43)) | [docs/recipes.md](docs/recipes.md) |
 | Reproducible success-path benchmarks with pyperf ([#44](https://github.com/halcyon-past/quarantine/issues/44)) | [docs/benchmarks.md](docs/benchmarks.md) |
+| Pluggable storage backends with S3 built in ([#11](https://github.com/halcyon-past/quarantine/issues/11)): `dir="s3://bucket/prefix"`, `quarantine-py[s3]`, public `StorageBackend` interface | [docs/remote-storage.md](docs/remote-storage.md) |
 | Architecture decision records | [docs/adr/](docs/adr/README.md) |
 | Security policy, SHA-pinned CI, trusted publishing with attestations | [SECURITY.md](SECURITY.md) |
 
@@ -41,61 +42,29 @@ subprocesses, the installed CLI, real HTTP against the dashboard — and a
 Hypothesis suite hunts for counterexamples to the load-bearing invariants.
 The docs are built with mkdocs-material and deployed on every merge.
 
-## 1. Pluggable storage backends
+## 1. More storage backends
 
-**The problem.** `.quarantine/` lives on the local disk. That is exactly right
-for a script on your laptop, and exactly wrong for Kubernetes, AWS Lambda,
-Docker, or any fleet of workers whose disks evaporate with the container.
-
-**The plan.** A storage backend interface, selected by the same `dir=` you
-already use — a URL picks the backend, a plain path keeps today's behaviour:
-
-```python
-@quarantine(dir="s3://my-bucket/quarantine")
-def process(item): ...
-```
-
-```bash
-quarantine list --dir s3://my-bucket/quarantine
-quarantine retry --dir s3://my-bucket/quarantine --import job.py
-```
-
-Distributed workers quarantine into one shared store; you inspect and retry
-from your laptop.
-
-**Install.** The core stays zero-dependency — `pip install quarantine-py`
-keeps working exactly as it does today, local folder only. Each backend is an
-optional extra that pulls in only its own client library:
-
-```bash
-pip install quarantine-py                # local folder backend (today's behaviour)
-pip install "quarantine-py[s3]"          # + Amazon S3            (boto3)
-pip install "quarantine-py[gcs]"         # + Google Cloud Storage (google-cloud-storage)
-pip install "quarantine-py[azure]"       # + Azure Blob Storage   (azure-storage-blob)
-pip install "quarantine-py[redis]"       # + Redis                (redis)
-pip install "quarantine-py[databricks]"  # + Databricks Unity Catalog volumes (databricks-sdk)
-pip install "quarantine-py[all]"         # everything above
-```
+The backend interface and the S3 backend shipped
+([#11](https://github.com/halcyon-past/quarantine/issues/11),
+[docs/remote-storage.md](docs/remote-storage.md)): `dir="s3://bucket/prefix"`
+gives a fleet one shared quarantine, ids are claimed with conditional writes,
+and `meta.json` uploaded last is the commit point
+([ADR 0007](docs/adr/0007-object-store-commit-point.md)). What remains is
+more built-in schemes, each an optional extra that pulls in only its own
+client library:
 
 | Backend | URL form | Notes |
 |---|---|---|
-| Local folder | `/path/to/.quarantine` | The default. Unchanged. |
-| Amazon S3 | `s3://bucket/prefix` | Per-record objects; no atomic rename exists on S3, so a commit-point redesign replaces it — see [ADR 0007](docs/adr/0007-object-store-commit-point.md). |
-| Google Cloud Storage | `gs://bucket/prefix` | Same object layout as S3. |
-| Azure Blob Storage | `azure://container/prefix` | Same object layout as S3. |
-| Redis | `redis://host:6379/0` | For short-lived, high-churn quarantines; records under a key prefix with optional TTL. |
-| Databricks | `/Volumes/catalog/schema/volume/quarantine` | Unity Catalog volumes, so quarantined items are governed, shareable and inspectable next to the data they came from. |
+| Google Cloud Storage | `gs://bucket/prefix` | Same object layout and commit protocol as S3 (`If-None-Match` is supported there too). `quarantine-py[gcs]`. |
+| Azure Blob Storage | `azure://container/prefix` | Same object layout and commit protocol as S3. `quarantine-py[azure]`. |
+| Redis | `redis://host:6379/0` | Not an object store: hash-per-record with `SETNX` id allocation and optional TTL, in its own ADR. `quarantine-py[redis]`. |
+| Databricks | `/Volumes/catalog/schema/volume/quarantine` | Unity Catalog volumes, so quarantined items are governed and shareable next to the data they came from. `quarantine-py[databricks]`. |
 
-**Design constraints we will not trade away:**
-
-- The local format does not change. Records stay self-describing plain files.
-- Object stores have no atomic rename, so the commit point becomes writing
-  `meta.json` last: a record is visible only once it is complete, which
-  preserves today's "a reader never sees a partial record" guarantee
-  ([ADR 0007](docs/adr/0007-object-store-commit-point.md)).
-- The interface is public and documented, so a third party can ship their own
-  backend without touching this package.
-- Every backend passes the same regression journeys the local store passes.
+Until then, the interface is public — `StorageBackend` +
+`register_backend()` — so any of these can be built outside the package
+today. The constraints that bound the S3 backend bind every future one: the
+local format does not change, every backend keeps "a reader never sees a
+partial record", and every backend passes the same regression journeys.
 
 ## Considered and rejected
 
