@@ -11,7 +11,7 @@ the storage backend work, for example, started as
 
 ## Already in place (the baseline)
 
-What v0.3.0 already gives you — each links to the page that explains it
+What v1.0.0 already gives you — each links to the page that explains it
 properly:
 
 | Feature | Where it is documented |

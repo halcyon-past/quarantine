@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
 
+# Default for any future job; the publish job itself elevates id-token below.
+permissions:
+  contents: read
+
 jobs:
   pypi-publish:
     name: Upload release to PyPI
