@@ -7,6 +7,8 @@
 `quarantine` keeps a loop running when one item goes bad: the failure is written
 to a folder — input, traceback, metadata — and you deal with it later.
 
+![The whole workflow: the run survives 4 bad rows, quarantine list shows them, quarantine retry recovers them](assets/demo.gif)
+
 | Page | Read it when |
 |---|---|
 | [Installation](installation.md) | Installing, verifying, choosing where the folder lives, upgrading. |
