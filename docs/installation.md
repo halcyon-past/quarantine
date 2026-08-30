@@ -15,6 +15,9 @@ add to someone else's crowded environment without a resolver argument.
 
 ## Install from PyPI
 
+The package lives at
+[pypi.org/project/quarantine-py](https://pypi.org/project/quarantine-py/):
+
 ```bash
 pip install quarantine-py
 ```
@@ -141,6 +144,14 @@ payloads, API responses — and they should not end up in a commit:
 pip install --upgrade quarantine-py
 pip uninstall quarantine-py
 ```
+
+To hear about new versions: on the
+[GitHub repository](https://github.com/halcyon-past/quarantine), choose
+**Watch → Custom → Releases** — GitHub then notifies you of each release and
+its notes, and nothing else. Every release is also listed in the
+[changelog](https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md),
+and tools like Dependabot and Renovate pick new versions up from PyPI
+automatically.
 
 Uninstalling leaves any `.quarantine/` folders alone; they are plain files, so
 delete them with `rm -rf` or `quarantine clear --yes` beforehand.

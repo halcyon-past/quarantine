@@ -51,7 +51,8 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/halcyon-past/quarantine"
+Homepage = "https://quarantine-py.aritro.cloud"
+Documentation = "https://quarantine-py.aritro.cloud"
 Source = "https://github.com/halcyon-past/quarantine"
 Issues = "https://github.com/halcyon-past/quarantine/issues"
 Changelog = "https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md"
