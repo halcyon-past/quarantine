@@ -126,7 +126,7 @@ Installing also puts a `quarantine` command on your `PATH`. Check both halves:
 
 ```bash
 $ quarantine --version
-quarantine 0.2.0
+quarantine 0.3.0
 $ python -c "import quarantine; print(quarantine.__version__)"
 0.1.0
 ```
@@ -217,9 +217,13 @@ Tune it: `@quarantine(halt_after=100)`.
     halt_after=50,  # consecutive-failure circuit breaker
     max_items=10_000,  # cap disk usage
     retries=2,  # retry transient failures
-    backoff=0.5,  # delay between retries
+    backoff=0.5,  # base delay between retries
+    backoff_factor=2.0,  # grow the delay per retry (exponential backoff)
+    jitter=0.25,  # randomise the delay so workers spread out
+    dead_after=5,  # records failing 5+ retries are skipped by blanket retries
     redact=["api_key", "password"],  # scrub these fields before saving inputs
     on_quarantine=my_alert_fn,  # e.g., send a Slack ping
+    on_retry_success=my_metric_fn,  # hooks for the retry lifecycle too
 )
 def process(item): ...
 ```
@@ -374,10 +378,13 @@ quarantined themselves):
 | [docs/cli.md](https://github.com/halcyon-past/quarantine/blob/main/docs/cli.md) | Every command, flag and exit code, with output samples. |
 | [docs/api.md](https://github.com/halcyon-past/quarantine/blob/main/docs/api.md) | Complete Python API reference. |
 | [docs/on-disk-format.md](https://github.com/halcyon-past/quarantine/blob/main/docs/on-disk-format.md) | What is in `.quarantine/`, and the guarantees about it. |
+| [docs/observability.md](https://github.com/halcyon-past/quarantine/blob/main/docs/observability.md) | Wiring the hooks into Prometheus, Datadog, Sentry and plain logging. |
 | [docs/troubleshooting.md](https://github.com/halcyon-past/quarantine/blob/main/docs/troubleshooting.md) | "It skipped my item", "retry says it cannot import", and friends. |
 | [docs/faq.md](https://github.com/halcyon-past/quarantine/blob/main/docs/faq.md) | Longer answers to the questions below. |
+| [docs/adr/](https://github.com/halcyon-past/quarantine/blob/main/docs/adr/README.md) | Architecture decision records: why rename-based atomicity, why not JSONL, why pickle-first, and friends. |
 | [CHANGELOG.md](https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md) | What changed, and when. |
-| [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md) | What is coming next - remote storage backends (S3, GCS, Azure, Redis, Databricks), retry upgrades - and why. |
+| [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md) | What is coming next - remote storage backends (S3, GCS, Azure, Redis, Databricks) - and why. |
+| [SECURITY.md](https://github.com/halcyon-past/quarantine/blob/main/SECURITY.md) | Reporting vulnerabilities, the threat model, and the supply-chain posture. |
 | [CONTRIBUTING.md](https://github.com/halcyon-past/quarantine/blob/main/CONTRIBUTING.md) | Setup, the checks, and the ground rules for changes. |
 
 ## When NOT to use quarantine

@@ -40,8 +40,13 @@ def get_quarantine(
     max_items: int | None = DEFAULT_MAX_ITEMS,
     retries: int = 0,
     backoff: float = 0.0,
+    backoff_factor: float = 1.0,
+    jitter: float = 0.0,
+    dead_after: int | None = None,
     redact: Iterable[str] = (),
     on_quarantine: Callable[[Record], None] | None = None,
+    on_retry_success: Callable[[Record], None] | None = None,
+    on_retry_failure: Callable[[Record], None] | None = None,
     skip_known_bad: bool = True,
     report: bool = True,
     verbose: bool = False,
@@ -59,8 +64,13 @@ def get_quarantine(
         max_items=max_items,
         retries=retries,
         backoff=backoff,
+        backoff_factor=backoff_factor,
+        jitter=jitter,
+        dead_after=dead_after,
         redact=tuple(redact),
         on_quarantine=on_quarantine,
+        on_retry_success=on_retry_success,
+        on_retry_failure=on_retry_failure,
         skip_known_bad=skip_known_bad,
         report=report,
         verbose=verbose,
@@ -89,8 +99,13 @@ def quarantine(
     max_items: int | None = ...,
     retries: int = ...,
     backoff: float = ...,
+    backoff_factor: float = ...,
+    jitter: float = ...,
+    dead_after: int | None = ...,
     redact: Iterable[str] = ...,
     on_quarantine: Callable[[Record], None] | None = ...,
+    on_retry_success: Callable[[Record], None] | None = ...,
+    on_retry_failure: Callable[[Record], None] | None = ...,
     skip_known_bad: bool = ...,
     report: bool = ...,
     verbose: bool = ...,
@@ -108,8 +123,13 @@ def quarantine(
     max_items: int | None = DEFAULT_MAX_ITEMS,
     retries: int = 0,
     backoff: float = 0.0,
+    backoff_factor: float = 1.0,
+    jitter: float = 0.0,
+    dead_after: int | None = None,
     redact: Iterable[str] = (),
     on_quarantine: Callable[[Record], None] | None = None,
+    on_retry_success: Callable[[Record], None] | None = None,
+    on_retry_failure: Callable[[Record], None] | None = None,
     skip_known_bad: bool = True,
     report: bool = True,
     verbose: bool = False,
@@ -140,9 +160,21 @@ def quarantine(
         halt_after: Raise :class:`~quarantine.SystemicFailure` after this many
             *consecutive* failures. ``None`` disables the circuit breaker.
         max_items: Refuse to grow the folder past this many records.
+        retries: Re-run a failing call this many times before quarantining it,
+            for shrugging off transient failures.
+        backoff: Base delay in seconds between transient retries.
+        backoff_factor: Multiply the delay by this per retry (``2.0`` gives
+            exponential backoff). ``1.0`` keeps the delay fixed.
+        jitter: Add up to this many random seconds to each delay, so parallel
+            workers do not hammer a struggling service in lockstep.
+        dead_after: A record that has failed this many attempts is *dead*: a
+            blanket retry skips it, and only retrying it by explicit id runs
+            it again. ``None`` disables poison-item detection.
         redact: Field names (globs allowed) scrubbed before anything is saved.
         on_quarantine: Called with each new :class:`~quarantine.Record`; useful
             for alerting. Exceptions from the hook are reported, not raised.
+        on_retry_success: Called with each record a retry recovers.
+        on_retry_failure: Called with each record that fails a retry again.
         skip_known_bad: On a rerun, skip inputs already in quarantine instead
             of failing them again.
         report: Print the one-line summary when the process exits.
@@ -159,8 +191,13 @@ def quarantine(
         max_items=max_items,
         retries=retries,
         backoff=backoff,
+        backoff_factor=backoff_factor,
+        jitter=jitter,
+        dead_after=dead_after,
         redact=redact,
         on_quarantine=on_quarantine,
+        on_retry_success=on_retry_success,
+        on_retry_failure=on_retry_failure,
         skip_known_bad=skip_known_bad,
         report=report,
         verbose=verbose,

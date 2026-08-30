@@ -8,6 +8,8 @@
 - [Choosing which errors to catch](#choosing-which-errors-to-catch)
 - [The circuit breaker](#the-circuit-breaker)
 - [The disk cap](#the-disk-cap)
+- [Transient retries](#transient-retries)
+- [Poison items](#poison-items)
 - [Redacting secrets](#redacting-secrets)
 - [Reruns and deduplication](#reruns-and-deduplication)
 - [Retrying from Python](#retrying-from-python)
@@ -77,10 +79,15 @@ Every option is optional. These are the defaults:
     exclude=(),  # what to let through anyway
     halt_after=50,  # consecutive-failure circuit breaker
     max_items=10_000,  # cap on the folder
-    retries=2,  # retry transient failures
-    backoff=0.5,  # delay between retries
+    retries=0,  # transient retries before quarantining
+    backoff=0.0,  # base delay between retries
+    backoff_factor=1.0,  # grow the delay per retry (2.0 = exponential)
+    jitter=0.0,  # random extra delay, spreads parallel workers out
+    dead_after=None,  # blanket retries skip records failing N+ attempts
     redact=(),  # field names to scrub before saving
     on_quarantine=None,  # callback for each new record
+    on_retry_success=None,  # callback when a retry recovers a record
+    on_retry_failure=None,  # callback when a retry fails again
     skip_known_bad=True,  # skip inputs already quarantined
     report=True,  # print the summary at exit
     verbose=False,  # also print a line per item
@@ -175,9 +182,48 @@ max_items.
 ```
 
 Successful retries free capacity again. `max_items=None` removes the cap.
-    retries=2,         # retry transient failures
-    backoff=0.5,       # delay between retries
 
+## Transient retries
+
+A wobbly network is not a bad item. `retries` re-runs a failing call before
+quarantining it, so a blip never costs a record:
+
+```python
+@quarantine(retries=2, backoff=0.5, backoff_factor=2.0, jitter=0.25)
+def fetch(url): ...
+```
+
+| Option | What it does |
+|---|---|
+| `retries=2` | Up to two extra attempts before the item is quarantined. |
+| `backoff=0.5` | Base delay in seconds before each extra attempt. |
+| `backoff_factor=2.0` | Grow the delay per attempt — here 0.5s then 1.0s. The default `1.0` keeps it fixed. |
+| `jitter=0.25` | Add up to this many random seconds to each delay, so a hundred parallel workers back off out of step instead of hammering a struggling service in lockstep. |
+
+Only exceptions that would be quarantined are retried; anything `only` /
+`exclude` lets propagate still propagates immediately, including
+`KeyboardInterrupt`. Async functions get the same schedule with
+`await asyncio.sleep(...)`, so the event loop is never blocked.
+
+## Poison items
+
+A record that keeps failing retry after retry eventually stops being worth
+the time it costs. `dead_after` draws that line:
+
+```python
+result = retry()  # runs everything, every time
+result = q.replace(dead_after=5).retry()  # skips records with 5+ failed attempts
+```
+
+```bash
+quarantine retry --dead-after 5
+```
+
+A dead record is reported in `unretryable` (reason `dead: N failed attempts`)
+and left untouched — never deleted, never silently dropped. Retrying it **by
+explicit id** always runs it: naming the record is the deliberate decision the
+blanket retry refuses to make for you. The attempt count lives in `meta.json`,
+so the threshold works across processes and across days.
 
 ## Redacting secrets
 
@@ -346,6 +392,22 @@ def process(item): ...
 The hook receives the `Record` after it is safely on disk. If your hook raises,
 the exception is reported on stderr and the run continues — Slack being down is
 not a reason to lose 9,996 items of work.
+
+Retries have hooks of their own, so metrics can follow a record through its
+whole life, not just its birth:
+
+```python
+@quarantine(
+    on_quarantine=lambda r: METRIC_QUARANTINED.labels(r.function, r.error_type).inc(),
+    on_retry_success=lambda r: METRIC_RECOVERED.labels(r.function).inc(),
+    on_retry_failure=lambda r: METRIC_STILL_FAILING.labels(r.function).inc(),
+)
+def process(item): ...
+```
+
+All three are reported-not-raised, so a broken metrics pipeline cannot break a
+retry. Ready-made wiring for Prometheus, Datadog and Sentry lives in
+[observability.md](observability.md).
 
 For a per-item line without writing a hook, use `verbose=True`.
 
