@@ -101,6 +101,7 @@ retries everything.
 | `-f NAME`, `--function NAME` | Only records from this function. |
 | `-i FILE.py`, `--import FILE.py` | Import this file to find the functions. Needed when they live in a script that ran as `__main__`. **The file's top level is executed**, so keep the script's own work behind `if __name__ == "__main__":`. |
 | `--dry-run` | Report what would be retried; change nothing. |
+| `--dead-after N` | Treat records that already failed `N` attempts as *dead* and skip them, so one poison item cannot dominate every blanket retry. A record retried by explicit ID is always run. |
 | `--json` | Machine-readable result. |
 
 ```

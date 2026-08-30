@@ -13,7 +13,7 @@ folder.
 You are using `try/except` — quarantine *is* a `try/except`, plus the
 bookkeeping you would otherwise write in every script forever: durable storage,
 the traceback, the exact input, retry-only-the-failures, a circuit breaker,
-deduplication, redaction. The [README](../README.md) has the side-by-side.
+deduplication, redaction. The [README](https://github.com/halcyon-past/quarantine#readme) has the side-by-side.
 
 ## Does it work on async functions?
 

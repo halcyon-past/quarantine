@@ -1,0 +1,56 @@
+site_name: quarantine
+site_description: "When one bad item crashes your loop of 10,000 - don't crash. Set it aside, keep going, fix it later."
+site_url: https://halcyon-past.github.io/quarantine/
+repo_url: https://github.com/halcyon-past/quarantine
+repo_name: halcyon-past/quarantine
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage guide: usage.md
+  - Practical examples: examples.md
+  - Observability: observability.md
+  - CLI reference: cli.md
+  - API reference: api.md
+  - On-disk format: on-disk-format.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Decision records:
+      - Overview: adr/README.md
+      - 0001 Rename-based atomicity: adr/0001-rename-based-atomicity.md
+      - 0002 Directory per record: adr/0002-directory-per-record.md
+      - 0003 Pickle-first serialization: adr/0003-pickle-first-serialization.md
+      - 0004 Zero runtime dependencies: adr/0004-zero-runtime-dependencies.md
+      - 0005 Stateless poison detection: adr/0005-stateless-poison-detection.md
+      - 0006 Hooks, not servers: adr/0006-hooks-not-servers.md
+      - 0007 Object-store commit point: adr/0007-object-store-commit-point.md

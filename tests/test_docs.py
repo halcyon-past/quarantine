@@ -20,9 +20,11 @@ DOC_FILES = [
     "index.md",
     "installation.md",
     "usage.md",
+    "examples.md",
     "cli.md",
     "api.md",
     "on-disk-format.md",
+    "observability.md",
     "troubleshooting.md",
     "faq.md",
 ]

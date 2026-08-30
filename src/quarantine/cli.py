@@ -115,6 +115,17 @@ def build_parser() -> argparse.ArgumentParser:
             "script that ran as __main__; the file's top level is executed)"
         ),
     )
+    retry.add_argument(
+        "--dead-after",
+        dest="dead_after",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "treat records that already failed N attempts as dead and skip them "
+            "(a record retried by explicit ID is always run)"
+        ),
+    )
     retry.add_argument("--json", action="store_true", help="machine-readable output")
     retry.set_defaults(handler=cmd_retry)
 
@@ -274,6 +285,12 @@ def cmd_show(args: argparse.Namespace) -> int:
 def cmd_retry(args: argparse.Namespace) -> int:
     """``quarantine retry``."""
     instance = _quarantine(args)
+    if args.dead_after is not None:
+        try:
+            instance = instance.replace(dead_after=args.dead_after)
+        except (TypeError, ValueError) as exc:
+            err(f"quarantine: {exc}")
+            return EXIT_USAGE
     if not instance.store.exists():
         _empty_note(instance.store)
         return EXIT_OK

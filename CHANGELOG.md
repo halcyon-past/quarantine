@@ -4,12 +4,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-08-30
 
 ### Added
-- **End-to-end regression suite:** `tests/test_regression.py` walks complete user journeys through the public surface only (real subprocesses, the installed CLI, real HTTP against the dashboard) and pins the `--json` shapes and CLI exit codes as contracts. Run it alone with `pytest -m regression` or `make regression`.
-- A dedicated `regression-suite` CI job (Linux and Windows); the `all-tests-pass` aggregate check now requires it, so PRs cannot merge without the journeys passing.
-- `CONTRIBUTING.md` now documents when and how to keep the regression suite up to date.
+- **Exponential backoff with jitter:** `backoff_factor=` grows the transient-retry delay per attempt (`2.0` doubles it; the default `1.0` keeps today's fixed delay), and `jitter=` adds up to that many random seconds so parallel workers back off out of step. Same schedule for sync and `async def`.
+- **Poison-item detection:** `dead_after=` (and `quarantine retry --dead-after N`) treats a record that has already failed N attempts as *dead* — blanket retries skip it and report why, while retrying it by explicit id always runs it. Derived from the `attempts` counter already on disk, so it works across processes and versions ([ADR 0005](docs/adr/0005-stateless-poison-detection.md)).
+- **Retry lifecycle hooks:** `on_retry_success=` and `on_retry_failure=` join `on_quarantine=`, all reported-not-raised, so metrics can follow a record through its whole life.
+- **Observability recipes:** a new [docs/observability.md](docs/observability.md) with copy-pasteable hook wiring for Prometheus (long-running and Pushgateway), Datadog, Sentry and plain logging — the hook-based resolution of [#14](https://github.com/halcyon-past/quarantine/issues/14) ([ADR 0006](docs/adr/0006-hooks-not-servers.md)).
+- **Property-based tests:** a Hypothesis suite asserting the load-bearing invariants over arbitrary inputs — serialization always produces something readable, redaction never leaks and never mutates, fingerprints ignore dict ordering.
+- **Architecture decision records:** `docs/adr/` documents the design decisions with their reasoning — rename-based atomicity, directory-per-record over JSONL, pickle-first serialization, zero dependencies, and the proposed object-store commit point.
+- **Documentation site:** the docs are now built with mkdocs-material (`make docs`, deployed to GitHub Pages on merge; `pip install "quarantine-py[docs]"` for the toolchain).
+- **End-to-end regression suite:** `tests/test_regression.py` walks complete user journeys through the public surface only (real subprocesses, the installed CLI, real HTTP against the dashboard) and pins the `--json` shapes and CLI exit codes as contracts. Runs as its own required CI job (`pytest -m regression` / `make regression`).
+- **Security posture:** `SECURITY.md` with a disclosure policy and an honest threat model, all CI actions pinned to commit SHAs, and PyPI attestations enabled on release.
+- `Quarantine(...)` now accepts `retries=` and `backoff=` directly, matching the decorator (previously they were reachable only via `Config`/`replace()`).
+
+### Fixed
+- Repaired `docs/api.md` and `docs/usage.md` sections that were garbled by a bad merge in 0.2.0 (option rows embedded inside code signatures, an orphaned options fragment), and gave transient retries a proper usage-guide section.
 
 ## [0.2.0] - 2026-08-25
 
@@ -79,7 +89,7 @@ First release.
   drift from the code.
 - Full type annotations and a `py.typed` marker.
 
-[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v0.2.0...HEAD
+[0.3.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.2.0
 
 [0.1.3]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.3

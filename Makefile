@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 PYTHON ?= python
 
-.PHONY: help install lint format typecheck test regression cover check build clean
+.PHONY: help install lint format typecheck test regression cover check docs build clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -32,10 +32,13 @@ cover:  ## Run the test suite with coverage
 
 check: lint typecheck cover  ## Everything CI checks
 
+docs:  ## Build the documentation site strictly (broken links fail)
+	mkdocs build --strict
+
 build:  ## Build sdist + wheel and validate the metadata
 	$(PYTHON) -m build
 	$(PYTHON) -m twine check --strict dist/*
 
 clean:  ## Remove build and cache artefacts
-	rm -rf dist build .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage .coverage.*
+	rm -rf dist build site .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage .coverage.*
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +
