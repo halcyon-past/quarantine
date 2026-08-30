@@ -25,6 +25,28 @@ pytest --cov --cov-report=term-missing
 All three must pass, on Python 3.10 through 3.13, on Linux, macOS and Windows.
 Coverage must stay at or above 90%.
 
+## The regression suite
+
+`tests/test_regression.py` walks complete user journeys through the public
+surface only - real subprocesses, the installed CLI, real HTTP against the
+dashboard. It runs as its own required CI job, and you can run it alone with:
+
+```bash
+pytest -m regression      # or: make regression
+```
+
+Keep it current as the library changes:
+
+- **New feature?** Add (or extend) a journey showing a user exercising it
+  end to end - not just unit tests of the internals.
+- **Changed a workflow, CLI output, `--json` shape, or exit code?** The suite
+  pins these as contracts, so update the affected journey in the same PR and
+  call the behaviour change out in the PR description.
+- **Fixed a workflow-level bug?** Add the failing journey first, then the fix.
+
+A regression test that no longer matches documented behaviour is a bug in the
+test - bring it up to date rather than deleting it.
+
 ## Git Flow and Pull Requests
 
 To maintain stability across environments, we enforce strict repository rules and promotion flows:
