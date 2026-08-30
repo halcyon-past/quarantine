@@ -10,6 +10,9 @@ dist/
 .venv/
 venv/
 
+# Docs site build
+site/
+
 # Tooling caches
 .pytest_cache/
 .mypy_cache/

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import functools
 import inspect
+import random
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -59,8 +60,13 @@ class Config:
     max_items: int | None = DEFAULT_MAX_ITEMS
     retries: int = 0
     backoff: float = 0.0
+    backoff_factor: float = 1.0
+    jitter: float = 0.0
+    dead_after: int | None = None
     redact: tuple[str, ...] = ()
     on_quarantine: Callable[[Record], None] | None = None
+    on_retry_success: Callable[[Record], None] | None = None
+    on_retry_failure: Callable[[Record], None] | None = None
     skip_known_bad: bool = True
     report: bool = True
     verbose: bool = False
@@ -73,12 +79,19 @@ class Config:
         object.__setattr__(self, "redact", tuple(self.redact))
         _check_positive(self.halt_after, "halt_after")
         _check_positive(self.max_items, "max_items")
+        _check_positive(self.dead_after, "dead_after")
         if self.retries < 0:
             raise ValueError("retries must be >= 0")
         if self.backoff < 0:
             raise ValueError("backoff must be >= 0")
-        if self.on_quarantine is not None and not callable(self.on_quarantine):
-            raise TypeError("on_quarantine must be callable")
+        if self.backoff_factor < 1:
+            raise ValueError("backoff_factor must be >= 1")
+        if self.jitter < 0:
+            raise ValueError("jitter must be >= 0")
+        for hook_name in ("on_quarantine", "on_retry_success", "on_retry_failure"):
+            hook = getattr(self, hook_name)
+            if hook is not None and not callable(hook):
+                raise TypeError(f"{hook_name} must be callable")
         Redactor(self.redact)  # raises TypeError on non-string field names
 
 
@@ -169,8 +182,15 @@ class Quarantine:
         exclude: Any = (),
         halt_after: int | None = DEFAULT_HALT_AFTER,
         max_items: int | None = DEFAULT_MAX_ITEMS,
+        retries: int = 0,
+        backoff: float = 0.0,
+        backoff_factor: float = 1.0,
+        jitter: float = 0.0,
+        dead_after: int | None = None,
         redact: Iterable[str] = (),
         on_quarantine: Callable[[Record], None] | None = None,
+        on_retry_success: Callable[[Record], None] | None = None,
+        on_retry_failure: Callable[[Record], None] | None = None,
         skip_known_bad: bool = True,
         report: bool = True,
         verbose: bool = False,
@@ -183,8 +203,15 @@ class Quarantine:
                 exclude=exclude,
                 halt_after=halt_after,
                 max_items=max_items,
+                retries=retries,
+                backoff=backoff,
+                backoff_factor=backoff_factor,
+                jitter=jitter,
+                dead_after=dead_after,
                 redact=tuple(redact),
                 on_quarantine=on_quarantine,
+                on_retry_success=on_retry_success,
+                on_retry_failure=on_retry_failure,
                 skip_known_bad=skip_known_bad,
                 report=report,
                 verbose=verbose,
@@ -249,8 +276,9 @@ class Quarantine:
                 return self._on_success(result)
             except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
                 if attempt < self.config.retries and self._should_quarantine(exc):
-                    if self.config.backoff > 0:
-                        time.sleep(self.config.backoff)
+                    delay = self._retry_delay(attempt)
+                    if delay > 0:
+                        time.sleep(delay)
                     continue
                 return self._on_failure(target, exc, args, kwargs, prepared)
         raise AssertionError("unreachable")
@@ -270,11 +298,19 @@ class Quarantine:
                 return self._on_success(result)
             except BaseException as exc:  # noqa: BLE001 - re-raised unless quarantinable
                 if attempt < self.config.retries and self._should_quarantine(exc):
-                    if self.config.backoff > 0:
-                        await asyncio.sleep(self.config.backoff)
+                    delay = self._retry_delay(attempt)
+                    if delay > 0:
+                        await asyncio.sleep(delay)
                     continue
                 return self._on_failure(target, exc, args, kwargs, prepared)
         raise AssertionError("unreachable")
+
+    def _retry_delay(self, attempt: int) -> float:
+        """Delay before re-running transient-retry *attempt* (0-based)."""
+        delay = self.config.backoff * self.config.backoff_factor**attempt
+        if self.config.jitter:
+            delay += random.uniform(0.0, self.config.jitter)  # noqa: S311 - jitter, not crypto
+        return delay
 
     # -- inspection -----------------------------------------------------
 
@@ -403,6 +439,15 @@ class Quarantine:
         for record in candidates:
             if wanted is not None and record.id not in wanted:
                 continue
+            dead_after = self.config.dead_after
+            if wanted is None and dead_after is not None and record.attempts >= dead_after:
+                result.unretryable.append(
+                    (
+                        record.id,
+                        f"dead: {record.attempts} failed attempts (retry it by id to force)",
+                    )
+                )
+                continue
             try:
                 target = using if using is not None else resolve_function(record, import_from)
                 call = record.load_call()
@@ -456,6 +501,7 @@ class Quarantine:
         self.store.write_traceback(record, exc)
         self.store.update(record)
         result.still_failing.append(record.id)
+        self._fire_hook("on_retry_failure", self.config.on_retry_failure, record)
 
     def _retry_recovered(self, record: Record, result: RetryResult) -> None:
         self.store.delete(record)
@@ -466,6 +512,7 @@ class Quarantine:
             if self._known is not None:
                 self._known.pop(record.fingerprint, None)
         result.recovered.append(record.id)
+        self._fire_hook("on_retry_success", self.config.on_retry_success, record)
 
     # -- internals ------------------------------------------------------
 
@@ -566,7 +613,14 @@ class Quarantine:
     def _notify(self, record: Record) -> None:
         if self.config.verbose:
             warn(f"quarantined #{record.id:04d} {record.summary} → {record.path}")
-        hook = self.config.on_quarantine
+        self._fire_hook("on_quarantine", self.config.on_quarantine, record)
+
+    def _fire_hook(
+        self,
+        name: str,
+        hook: Callable[[Record], None] | None,
+        record: Record,
+    ) -> None:
         if hook is None:
             return
         try:
@@ -574,7 +628,7 @@ class Quarantine:
         except NEVER_QUARANTINE:
             raise
         except Exception as exc:  # noqa: BLE001 - a broken alert must not kill the run
-            warn(f"on_quarantine hook failed: {type(exc).__name__}: {exc}")
+            warn(f"{name} hook failed: {type(exc).__name__}: {exc}")
 
 
 async def _await(awaitable: Any) -> Any:

@@ -143,6 +143,26 @@ def test_retry_specific_ids(populated, module, capsys):
     assert [r.id for r in populated.records()] == [1]
 
 
+def test_retry_dead_after_skips_poison_items(populated, module, capsys):
+    run("retry")  # both fail again: attempts go to 2
+    capsys.readouterr()
+    module.FAIL_ON = {"worse"}
+    assert run("retry", "--dead-after", "2", "--json") == EXIT_PROBLEM
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["recovered"] == []
+    assert [entry["id"] for entry in payload["unretryable"]] == [1, 2]
+    assert all("dead" in entry["reason"] for entry in payload["unretryable"])
+
+    # By explicit id the same record still runs - and recovers.
+    assert run("retry", "1", "--dead-after", "2") == EXIT_OK
+    assert [r.id for r in populated.records()] == [2]
+
+
+def test_retry_dead_after_rejects_nonsense(populated, capsys):
+    assert run("retry", "--dead-after", "0") == EXIT_USAGE
+    assert "dead_after" in capsys.readouterr().err
+
+
 def test_retry_dry_run(populated, capsys):
     assert run("retry", "--dry-run") == EXIT_OK
     assert "would retry 2 record(s)" in capsys.readouterr().out

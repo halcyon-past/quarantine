@@ -50,6 +50,22 @@ Keep it current as the library changes:
 A regression test that no longer matches documented behaviour is a bug in the
 test - bring it up to date rather than deleting it.
 
+## Docs and decision records
+
+The `docs/` pages are rendered with mkdocs-material and deployed on every
+merge to `main`. Build locally with:
+
+```bash
+pip install -e ".[docs]"
+make docs          # mkdocs build --strict - broken links fail the build
+mkdocs serve       # live preview at http://127.0.0.1:8000
+```
+
+Design decisions live in `docs/adr/`. If your change makes a decision worth
+defending later - a format, a guarantee, a rejected alternative - add a short
+ADR in the same PR; if it contradicts an existing one, supersede that record
+rather than editing it.
+
 ## Git Flow and Pull Requests
 
 To maintain stability across environments, we enforce strict repository rules and promotion flows:
