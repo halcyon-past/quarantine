@@ -17,10 +17,9 @@ see real signatures.
 
 ```python
 quarantine(fn=None, /, *, dir=None, only=(Exception,), exclude=(),
-           halt_after=50, max_items=10_000, retries=0, backoff=0.0, redact=(), on_quarantine=None,
-| `retries` | `0` | Attempt the function this many additional times before quarantining. |
-| `backoff` | `0.0` | Seconds to sleep between retries. |
-
+           halt_after=50, max_items=10_000, retries=0, backoff=0.0,
+           backoff_factor=1.0, jitter=0.0, dead_after=None, redact=(),
+           on_quarantine=None, on_retry_success=None, on_retry_failure=None,
            skip_known_bad=True, report=True, verbose=False)
 ```
 
@@ -34,12 +33,16 @@ and on `async def`.
 | `only` | `(Exception,)` | Exception types to quarantine; anything else propagates. A bare class is accepted. |
 | `exclude` | `()` | Exception types to let through even if `only` matches. |
 | `halt_after` | `50` | Raise `SystemicFailure` after this many *consecutive* failures. `None` disables it. |
-| `retries` | `0` | Attempt the function this many additional times before quarantining. |
-| `backoff` | `0.0` | Seconds to sleep between retries. |
-
 | `max_items` | `10_000` | Raise `QuarantineFull` rather than grow the folder past this. `None` disables it. |
+| `retries` | `0` | Attempt the function this many additional times before quarantining. |
+| `backoff` | `0.0` | Base delay in seconds between transient retries. |
+| `backoff_factor` | `1.0` | Multiply the delay by this per retry; `2.0` gives exponential backoff. |
+| `jitter` | `0.0` | Add up to this many random seconds to each delay, so parallel workers spread out. |
+| `dead_after` | `None` | Records that have failed this many attempts are *dead*: a blanket `retry()` skips them; retrying by explicit id still runs them. |
 | `redact` | `()` | Field-name patterns (case-insensitive, globs allowed) scrubbed before writing. |
 | `on_quarantine` | `None` | `Callable[[Record], None]`, called after each record is safely written. Exceptions from it are reported, not raised. |
+| `on_retry_success` | `None` | `Callable[[Record], None]`, called for each record a retry recovers. Reported, not raised. |
+| `on_retry_failure` | `None` | `Callable[[Record], None]`, called for each record that fails a retry again. Reported, not raised. |
 | `skip_known_bad` | `True` | Skip inputs already in quarantine instead of re-running them. |
 | `report` | `True` | Print the one-line summary when the process exits. |
 | `verbose` | `False` | Also print a line as each item is quarantined. |
@@ -82,12 +85,11 @@ in your loop *body*, only in the callable it hands work to.
 ## `Quarantine`
 
 ```python
-Quarantine(dir=None, *, only=(Exception,), exclude=(), halt_after=50, max_items=10_000, retries=0, backoff=0.0,
-| `retries` | `0` | Attempt the function this many additional times before quarantining. |
-| `backoff` | `0.0` | Seconds to sleep between retries. |
-
-           max_items=10_000, redact=(), on_quarantine=None,
-           skip_known_bad=True, report=True, verbose=False, config=None)
+Quarantine(dir=None, *, only=(Exception,), exclude=(), halt_after=50,
+           max_items=10_000, retries=0, backoff=0.0, backoff_factor=1.0,
+           jitter=0.0, dead_after=None, redact=(), on_quarantine=None,
+           on_retry_success=None, on_retry_failure=None, skip_known_bad=True,
+           report=True, verbose=False, config=None)
 ```
 
 The object the decorator is sugar over. Construct it when you would rather

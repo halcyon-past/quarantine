@@ -114,6 +114,13 @@ def test_retrying_frees_capacity(q, target_module):
         ({"only": 42}, "exception class or a tuple"),
         ({"exclude": (int,)}, "must contain exception classes"),
         ({"on_quarantine": "notcallable"}, "must be callable"),
+        ({"on_retry_success": "notcallable"}, "must be callable"),
+        ({"on_retry_failure": 42}, "must be callable"),
+        ({"retries": -1}, "must be >= 0"),
+        ({"backoff": -0.5}, "must be >= 0"),
+        ({"backoff_factor": 0.5}, "must be >= 1"),
+        ({"jitter": -1.0}, "must be >= 0"),
+        ({"dead_after": 0}, "must be >= 1"),
         ({"redact": [123]}, "must be strings"),
     ],
 )

@@ -1,6 +1,6 @@
 # quarantine — documentation
 
-[← back to the README](../README.md)
+[← back to the README](https://github.com/halcyon-past/quarantine#readme)
 
 `quarantine` keeps a loop running when one item goes bad: the failure is written
 to a folder — input, traceback, metadata — and you deal with it later.
@@ -13,8 +13,10 @@ to a folder — input, traceback, metadata — and you deal with it later.
 | [CLI reference](cli.md) | You are at a terminal with a folder full of failures. |
 | [API reference](api.md) | You are writing code against it. |
 | [On-disk format](on-disk-format.md) | You want to read, ship or process `.quarantine/` yourself. |
+| [Observability](observability.md) | You want failures on a dashboard: Prometheus, Datadog, Sentry, logging. |
 | [Troubleshooting](troubleshooting.md) | Something surprised you. |
 | [FAQ](faq.md) | The "is this just a dead-letter queue?" questions. |
+| [Decision records](adr/README.md) | Why the design is the way it is — atomicity, formats, dependencies. |
 
 ## The shortest possible tour
 

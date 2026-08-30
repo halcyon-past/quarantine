@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -272,3 +273,122 @@ async def test_sync_retry_refuses_async_records_inside_a_loop(q, target_module):
     await q.acall(module.load, 1)
     with pytest.raises(Exception, match=re.escape("await q.aretry()")):
         q.retry()
+
+
+def test_backoff_grows_exponentially(q, monkeypatch):
+    # Replace core's own `time` binding, not the shared stdlib module: the
+    # store retries contended renames with time.sleep too, and recording those
+    # would make this flaky on machines with sync clients or virus scanners.
+    sleeps: list[float] = []
+    monkeypatch.setattr("quarantine.core.time", SimpleNamespace(sleep=sleeps.append))
+    hasty = q.replace(retries=3, backoff=1.0, backoff_factor=2.0)
+
+    def always_fails(item):
+        raise ValueError("nope")
+
+    hasty.call(always_fails, "x")
+    assert sleeps == [1.0, 2.0, 4.0]
+    assert len(hasty.records()) == 1
+
+
+def test_jitter_adds_a_bounded_random_delay(q, monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr("quarantine.core.time", SimpleNamespace(sleep=sleeps.append))
+    monkeypatch.setattr("quarantine.core.random", SimpleNamespace(uniform=lambda low, high: high))
+    jittery = q.replace(retries=2, backoff=1.0, jitter=0.5)
+
+    def always_fails(item):
+        raise ValueError("nope")
+
+    jittery.call(always_fails, "x")
+    assert sleeps == [1.5, 1.5]
+
+
+async def test_async_backoff_follows_the_same_schedule(q, monkeypatch):
+    delays = []
+
+    async def fake_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr("quarantine.core.asyncio.sleep", fake_sleep)
+    hasty = q.replace(retries=2, backoff=0.5, backoff_factor=2.0)
+
+    async def always_fails(item):
+        raise ValueError("nope")
+
+    await hasty.acall(always_fails, "x")
+    assert delays == [0.5, 1.0]
+
+
+def test_dead_records_are_skipped_by_a_blanket_retry(q, module):
+    q.call(module.load, "bad")
+    assert q.retry().still_failing == [1]  # attempts: 2
+    assert q.retry().still_failing == [1]  # attempts: 3
+
+    poisoned = q.replace(dead_after=3)
+    result = poisoned.retry()
+    assert result.still_failing == []
+    assert result.unretryable == [(1, "dead: 3 failed attempts (retry it by id to force)")]
+
+    # An explicit id is a deliberate decision, so it always runs.
+    module.FAIL_ON = set()
+    assert poisoned.retry([1]).recovered == [1]
+
+
+def test_live_records_pass_the_dead_check(q, module):
+    q.call(module.load, "bad")
+    module.FAIL_ON = set()
+    assert q.replace(dead_after=3).retry().recovered == [1]
+
+
+def test_retry_hooks_fire_for_both_outcomes(q, module):
+    outcomes = []
+    hooked = q.replace(
+        on_retry_success=lambda r: outcomes.append(("recovered", r.id)),
+        on_retry_failure=lambda r: outcomes.append(("failed", r.id)),
+    )
+    hooked.call(module.load, "bad")
+    hooked.retry()
+    assert outcomes == [("failed", 1)]
+
+    module.FAIL_ON = set()
+    hooked.retry()
+    assert outcomes == [("failed", 1), ("recovered", 1)]
+
+
+async def test_retry_hooks_fire_from_aretry_too(q, target_module):
+    module = target_module(
+        """
+        BROKEN = True
+
+
+        async def load(item):
+            if BROKEN:
+                raise ValueError("broken")
+            return item
+        """,
+        name="qtarget_hooks",
+    )
+    outcomes = []
+    hooked = q.replace(
+        on_retry_success=lambda r: outcomes.append(("recovered", r.id)),
+        on_retry_failure=lambda r: outcomes.append(("failed", r.id)),
+    )
+    await hooked.acall(module.load, 1)
+    await hooked.aretry()
+    module.BROKEN = False
+    await hooked.aretry()
+    assert outcomes == [("failed", 1), ("recovered", 1)]
+
+
+def test_a_broken_retry_hook_is_reported_not_fatal(q, module, capsys):
+    def explode(record):
+        raise RuntimeError("hook bug")
+
+    hooked = q.replace(on_retry_success=explode)
+    hooked.call(module.load, "bad")
+    module.FAIL_ON = set()
+    result = hooked.retry()
+    assert result.recovered == [1]
+    assert hooked.records() == []
+    assert "on_retry_success hook failed" in capsys.readouterr().err
