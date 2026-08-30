@@ -8,7 +8,7 @@ strand existing quarantine folders.
 
 | Version | Supported |
 |---|---|
-| latest 0.x release | ✅ |
+| latest release | ✅ |
 | anything older | upgrade |
 
 ## Reporting a vulnerability
