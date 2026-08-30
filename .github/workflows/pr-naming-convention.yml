@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
+# Least privilege: the job only inspects the branch name from the event
+# payload - it needs no access to the repository at all.
+permissions: {}
+
 jobs:
   check-branch-name:
     runs-on: ubuntu-latest

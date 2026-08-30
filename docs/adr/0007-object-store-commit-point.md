@@ -1,6 +1,6 @@
 # 0007 — Commit point for object-store backends
 
-**Status:** Accepted (v0.4.0, S3 backend) · Resolves [issue #11](https://github.com/halcyon-past/quarantine/issues/11)
+**Status:** Accepted (v1.0.0, S3 backend) · Resolves [issue #11](https://github.com/halcyon-past/quarantine/issues/11)
 
 ## Context
 
