@@ -43,8 +43,7 @@ already use - a URL picks the backend, a plain path keeps today's behaviour:
 
 ```python
 @quarantine(dir="s3://my-bucket/quarantine")
-def process(item):
-    ...
+def process(item): ...
 ```
 
 ```bash
