@@ -1,6 +1,6 @@
 site_name: quarantine
 site_description: "When one bad item crashes your loop of 10,000 - don't crash. Set it aside, keep going, fix it later."
-site_url: https://halcyon-past.github.io/quarantine/
+site_url: https://quarantine-py.aritro.cloud/
 repo_url: https://github.com/halcyon-past/quarantine
 repo_name: halcyon-past/quarantine
 edit_uri: edit/main/docs/
@@ -25,6 +25,15 @@ theme:
     - navigation.footer
     - content.code.copy
     - content.action.edit
+
+extra:
+  social:
+    - icon: simple/pypi
+      link: https://pypi.org/project/quarantine-py/
+      name: quarantine-py on PyPI
+    - icon: simple/github
+      link: https://github.com/halcyon-past/quarantine
+      name: quarantine on GitHub
 
 markdown_extensions:
   - admonition
