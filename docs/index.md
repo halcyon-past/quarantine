@@ -1,6 +1,8 @@
 # quarantine — documentation
 
-[← back to the README](https://github.com/halcyon-past/quarantine#readme)
+[← back to the README](https://github.com/halcyon-past/quarantine#readme) ·
+[package on PyPI](https://pypi.org/project/quarantine-py/) ·
+[latest releases](https://github.com/halcyon-past/quarantine/releases)
 
 `quarantine` keeps a loop running when one item goes bad: the failure is written
 to a folder — input, traceback, metadata — and you deal with it later.
