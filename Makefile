@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 PYTHON ?= python
 
-.PHONY: help install lint format typecheck test cover check build clean
+.PHONY: help install lint format typecheck test regression cover check build clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -23,6 +23,9 @@ typecheck:  ## mypy (strict)
 
 test:  ## Run the test suite
 	pytest
+
+regression:  ## Run only the end-to-end regression journeys
+	pytest -m regression -v
 
 cover:  ## Run the test suite with coverage
 	pytest --cov --cov-report=term-missing
