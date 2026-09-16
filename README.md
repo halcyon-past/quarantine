@@ -1,6 +1,7 @@
 # 🏥 quarantine
 
 [![PyPI version](https://img.shields.io/pypi/v/quarantine-py.svg)](https://pypi.org/project/quarantine-py/)
+[![Conda Version](https://img.shields.io/conda/vn/conda-forge/quarantine-py.svg)](https://anaconda.org/conda-forge/quarantine-py)
 [![Python versions](https://img.shields.io/pypi/pyversions/quarantine-py.svg)](https://pypi.org/project/quarantine-py/)
 [![CI](https://github.com/halcyon-past/quarantine/actions/workflows/ci.yml/badge.svg)](https://github.com/halcyon-past/quarantine/actions/workflows/ci.yml)
 
@@ -102,19 +103,54 @@ Your job finishes. The sick items wait for you, with their full medical charts.
 
 ## Installation
 
-Available on PyPI as [**quarantine-py**](https://pypi.org/project/quarantine-py/):
+Available on [**PyPI**](https://pypi.org/project/quarantine-py/) and [**conda-forge**](https://anaconda.org/conda-forge/quarantine-py/) as `quarantine-py`:
+
+### pip
 
 ```bash
 pip install quarantine-py
 ```
 
-That is the whole install story. Some alternatives, if you prefer:
+### conda / mamba / pixi
+
+From conda-forge:
 
 ```bash
-uv add quarantine-py            # uv projects
-uv pip install quarantine-py    # uv, without a project
-python -m pip install --user quarantine-py
-pip install git+https://github.com/halcyon-past/quarantine   # unreleased main
+# conda
+conda install -c conda-forge quarantine-py
+
+# mamba
+mamba install -c conda-forge quarantine-py
+
+# pixi
+pixi add quarantine-py
+```
+
+### uv
+
+```bash
+uv add quarantine-py            # inside a uv project
+uv pip install quarantine-py    # standalone with uv
+```
+
+### pipx (CLI standalone)
+
+If you only want the standalone `quarantine` command-line tool isolated:
+
+```bash
+pipx install quarantine-py
+```
+
+### For development / from source
+
+```bash
+# Install latest unreleased main directly from GitHub
+pip install git+https://github.com/halcyon-past/quarantine
+
+# Or clone for local development
+git clone https://github.com/halcyon-past/quarantine.git
+cd quarantine
+pip install -e ".[dev]"       # includes pytest, ruff, mypy, hypothesis
 ```
 
 **Requirements**
@@ -379,6 +415,7 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | | |
 |---|---|
 | [PyPI: quarantine-py](https://pypi.org/project/quarantine-py/) | The released package - versions, wheels, and metadata. |
+| [Conda-forge: quarantine-py](https://anaconda.org/conda-forge/quarantine-py) | Conda feedstock package for conda, mamba, and pixi. |
 | [Releases](https://github.com/halcyon-past/quarantine/releases) | New versions, with notes. **Watch → Custom → Releases** on this repo to get notified. |
 | [docs/installation.md](https://github.com/halcyon-past/quarantine/blob/main/docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
 | [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |

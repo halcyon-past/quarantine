@@ -46,6 +46,24 @@ quarantine-py~=0.1
 dependencies = ["quarantine-py>=0.1,<0.2"]
 ```
 
+## Install from conda-forge
+
+The package is available on [conda-forge](https://anaconda.org/conda-forge/quarantine-py):
+
+```bash
+conda install -c conda-forge quarantine-py
+```
+
+Or using [mamba](https://mamba.readthedocs.io/) or [pixi](https://pixi.sh/):
+
+```bash
+# mamba
+mamba install -c conda-forge quarantine-py
+
+# pixi
+pixi add quarantine-py
+```
+
 ## Install for development, or from source
 
 ```bash
