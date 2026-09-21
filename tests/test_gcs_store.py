@@ -147,7 +147,7 @@ def test_a_missing_bucket_name_is_rejected():
 
 
 def test_the_missing_extra_is_named(monkeypatch, gcs_url):
-    monkeypatch.setitem(sys.modules, "google.cloud.storage", None)
+    monkeypatch.setitem(sys.modules, "google.cloud", None)
     with pytest.raises(StorageError, match=r"quarantine-py\[gcs\]"):
         GCSStore(gcs_url)
 
