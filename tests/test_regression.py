@@ -472,3 +472,96 @@ def test_a_fleet_shares_one_s3_quarantine(tmp_path, run):
         assert "Nothing quarantined" in after.stdout
     finally:
         server.stop()
+
+
+def _gcs_emulator_reachable(host: str) -> bool:
+    try:
+        urllib.request.urlopen(f"{host}/storage/v1/b", timeout=1)
+    except (urllib.error.URLError, OSError):
+        return False
+    return True
+
+
+_GCS_EMULATOR_HOST = os.environ.get("STORAGE_EMULATOR_HOST", "http://localhost:4443")
+
+GCS_WORKER = """
+import os
+import sys
+
+from quarantine import quarantine
+
+URL = os.environ["QUARANTINE_URL"]
+
+
+@quarantine(dir=URL, halt_after=None, report=False, retries=0)
+def process(item):
+    if item.endswith("bad") and os.environ.get("FIXED") != "1":
+        raise ValueError(f"cannot process {item}")
+    return item
+
+
+if __name__ == "__main__":
+    tag = sys.argv[1]
+    for suffix in ["ok-1", "bad", "ok-2"]:
+        process(f"{tag}-{suffix}")
+"""
+
+
+@pytest.mark.skipif(
+    not _gcs_emulator_reachable(_GCS_EMULATOR_HOST),
+    reason=(
+        f"fake-gcs-server not reachable at {_GCS_EMULATOR_HOST} - "
+        f"run `docker run -d -p 4443:4443 fsouza/fake-gcs-server -scheme http`"
+    ),
+)
+def test_a_fleet_shares_one_gcs_quarantine(tmp_path, run):
+    """Issue #53's journey: ephemeral workers quarantine into one bucket,
+    and the failures are inspected and replayed from a different machine."""
+    from google.auth.credentials import AnonymousCredentials
+    from google.cloud import storage
+
+    client = storage.Client(
+        credentials=AnonymousCredentials(),
+        project="test-project",
+        client_options={"api_endpoint": _GCS_EMULATOR_HOST},
+    )
+    bucket_name = "fleet-bucket-gcs"
+    if client.lookup_bucket(bucket_name) is None:
+        client.create_bucket(bucket_name)
+
+    url = f"gs://{bucket_name}/etl/quarantine"
+    gcs_env = {"STORAGE_EMULATOR_HOST": _GCS_EMULATOR_HOST, "QUARANTINE_URL": url}
+
+    _write_script(tmp_path, "worker.py", GCS_WORKER)
+
+    # 1. two ephemeral "pods" run the job; their local disks tell no tales
+    for tag in ["w1", "w2"]:
+        result = run("worker.py", tag, extra_env=gcs_env)
+        assert result.returncode == 0, result.stderr
+
+    # 2. from "the laptop": one shared store holds exactly the two failures
+    listed = run("-m", "quarantine", "list", "--dir", url, "--json", extra_env=gcs_env)
+    assert listed.returncode == 0, listed.stderr
+    records = json.loads(listed.stdout)
+    assert sorted(r["error"] for r in records) == [
+        "cannot process w1-bad",
+        "cannot process w2-bad",
+    ]
+    assert [r["id"] for r in records] == [1, 2], "claimed ids never collided"
+
+    # 3. fix the bug, replay only the failures, the bucket empties
+    fixed = run(
+        "-m",
+        "quarantine",
+        "retry",
+        "--dir",
+        url,
+        "--import",
+        "worker.py",
+        extra_env={**gcs_env, "FIXED": "1"},
+    )
+    assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    assert "2 recovered" in fixed.stdout
+
+    after = run("-m", "quarantine", "list", "--dir", url, extra_env=gcs_env)
+    assert "Nothing quarantined" in after.stdout

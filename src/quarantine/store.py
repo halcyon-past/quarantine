@@ -663,9 +663,15 @@ def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBacken
         from .s3_store import S3Store  # noqa: PLC0415 - deferred so boto3 stays optional
 
         register_backend("s3", S3Store)
+
+    if scheme not in _BACKENDS and scheme == "gs":
+        from .gcs_store import GCSStore  # noqa: PLC0415
+
+        register_backend("gs", GCSStore)
+
     factory = _BACKENDS.get(scheme)
     if factory is None:
-        known = ", ".join(sorted({*(_BACKENDS), "s3"})) or "s3"
+        known = ", ".join(sorted({*(_BACKENDS), "s3", "gs"})) or "s3"
         raise StorageError(
             f"no storage backend for {scheme}:// URLs (available: {known}). "
             f"Third-party backends can claim a scheme with quarantine.register_backend()."
