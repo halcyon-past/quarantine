@@ -1,28 +1,31 @@
-"""The S3 storage backend: one shared quarantine for a fleet of workers.
+"""The GCS storage backend: one shared quarantine for a fleet of workers.
 
-The record layout mirrors the local folder exactly - per-record objects under
-``s3://bucket/prefix/0001/...`` - but the two primitives the local store's
-guarantees rest on do not exist on S3, so they are replaced (see ADR 0007):
+The record layout mirrors the local folder and the S3 backend exactly -
+per-record objects under ``gs://bucket/prefix/0001/...`` - but GCS's
+conditional-write primitive differs slightly from S3's, so it is adapted
+here (see ADR 0007, and ``s3_store.py`` for the sibling implementation):
 
 **Id allocation.** The local store claims an id by creating a directory,
-which is atomic. Here an id is claimed by writing a zero-byte ``.claim``
-object with ``If-None-Match: *`` - S3's conditional write - so two workers
-can never both own an id; the loser gets ``PreconditionFailed`` and takes
-the next number.
+which is atomic; the S3 backend claims one with ``If-None-Match: *``. Here
+an id is claimed by uploading a zero-byte ``.claim`` object with
+``if_generation_match=0`` - GCS's "only write me if no live version of this
+object exists yet" precondition - so two workers can never both own an id;
+the loser gets a ``PreconditionFailed`` (412) and takes the next number.
 
-**The commit point.** The local store renames a staged directory into place.
-Here ``meta.json`` is uploaded *last*, and readers ignore any record prefix
-that lacks it - so a reader can never observe a half-written record, and a
-crash mid-upload leaves invisible debris that ``quarantine reindex`` sweeps.
+**The commit point.** ``meta.json`` is uploaded *last*, and readers ignore
+any record prefix that lacks it - so a reader can never observe a
+half-written record, and a crash mid-upload leaves invisible debris that
+``quarantine reindex`` sweeps.
 
 Reads are materialised into a per-URL cache directory under the system temp
 folder, so :class:`~quarantine.record.Record` objects behave exactly as they
 do locally - ``quarantine show``, ``debug``, ``retry`` and the dashboard all
 work unchanged against a bucket.
 
-Requires ``boto3``: ``pip install "quarantine-py[s3]"``. Credentials and
-region come from the standard boto3 chain (environment, profile, SSO,
-instance role); the IAM permissions needed are documented in
+Requires ``google-cloud-storage``: ``pip install "quarantine-py[gcs]"``.
+Credentials and project come from the standard Google auth chain
+(``GOOGLE_APPLICATION_CREDENTIALS``, gcloud ADC, or a service account
+attached to the runtime); the IAM permissions needed are documented in
 ``docs/remote-storage.md``.
 """
 
@@ -46,11 +49,10 @@ from .store import StorageBackend, build_record
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from types import ModuleType
 
-__all__ = ["S3Store"]
+__all__ = ["GCSStore"]
 
 CLAIM_NAME = ".claim"
 MAX_ID_ATTEMPTS = 64
-_DELETE_BATCH = 1000
 
 _INDEX_FIELDS = (
     "id",
@@ -66,42 +68,56 @@ _INDEX_FIELDS = (
 )
 
 
-def _import_boto3() -> tuple[ModuleType, type[Exception]]:
+def _import_gcs() -> tuple[ModuleType, type[Exception], type[Exception], type[Exception]]:
     try:
-        import boto3  # noqa: PLC0415 - deferred so the core package stays zero-dependency
-        from botocore.exceptions import ClientError  # noqa: PLC0415
+        from google.api_core.exceptions import (  # noqa: PLC0415
+            GoogleAPICallError,
+            NotFound,
+            PreconditionFailed,
+        )
+        from google.cloud import storage  # noqa: PLC0415 - deferred, optional extra
     except ImportError as exc:
         raise StorageError(
-            "the s3:// backend needs boto3, which is an optional extra: "
-            'pip install "quarantine-py[s3]"'
+            "the gcs:// backend needs google-cloud-storage, which is an optional extra: "
+            'pip install "quarantine-py[gcs]"'
         ) from exc
-    return boto3, ClientError
+    return storage, PreconditionFailed, NotFound, GoogleAPICallError
 
 
-class S3Store(StorageBackend):
-    """A quarantine stored as per-record objects under an S3 prefix."""
+class GCSStore(StorageBackend):
+    """A quarantine stored as per-record objects under a GCS prefix."""
 
     def __init__(self, url: str) -> None:
-        if not url.startswith("s3://"):
-            raise StorageError(f"not an s3:// URL: {url!r}")
-        rest = url[len("s3://") :]
+        if not url.startswith("gs://"):
+            raise StorageError(f"not a gs:// URL: {url!r}")
+        rest = url[len("gs://") :]
         bucket, _, prefix = rest.partition("/")
         if not bucket:
-            raise StorageError(f"{url!r} is missing a bucket name (s3://bucket/prefix)")
-        boto3, client_error = _import_boto3()
+            raise StorageError(f"{url!r} is missing a bucket name (gs://bucket/prefix)")
+        storage, precondition_failed, not_found, api_error = _import_gcs()
         self.dir: str = url.rstrip("/")
-        self.bucket = bucket
+        self.bucket_name = bucket
         self.prefix = prefix.strip("/")
         self.problems: list[str] = []
-        self._client = boto3.client("s3")
-        self._client_error = client_error
+        try:
+            self._client = storage.Client()
+        except Exception as exc:
+            raise StorageError(
+                f"cannot authenticate to Google Cloud Storage for {url}: {exc}. "
+                "Set GOOGLE_APPLICATION_CREDENTIALS or run "
+                "`gcloud auth application-default login`."
+            ) from exc
+        self._bucket = self._client.bucket(bucket)
+        self._precondition_failed = precondition_failed
+        self._not_found = not_found
+        self._api_error = api_error
         self._mutex = threading.Lock()
         self._id_hint = 0
         digest = hashlib.sha256(self.dir.encode("utf-8")).hexdigest()[:12]
-        self._cache = Path(tempfile.gettempdir()) / f"quarantine-s3-{digest}"
+        self._cache = Path(tempfile.gettempdir()) / f"quarantine-gcs-{digest}"
 
     def __repr__(self) -> str:
-        return f"S3Store({self.dir!r})"
+        return f"GCSStore({self.dir!r})"
 
     # -- keys -------------------------------------------------------------
 
@@ -118,18 +134,15 @@ class S3Store(StorageBackend):
     # -- listing ----------------------------------------------------------
 
     def _list_objects(self) -> dict[int, dict[str, int]]:
-        """Map of ``id -> {filename: size}`` for every object under the prefix."""
         out: dict[int, dict[str, int]] = {}
-        paginator = self._client.get_paginator("list_objects_v2")
         try:
-            pages = paginator.paginate(Bucket=self.bucket, Prefix=self._list_prefix())
-            for page in pages:
-                for item in page.get("Contents", []):
-                    tail = item["Key"][len(self._list_prefix()) :]
-                    dirname, _, filename = tail.partition("/")
-                    if dirname.isdigit() and filename:
-                        out.setdefault(int(dirname), {})[filename] = item["Size"]
-        except self._client_error as exc:
+            blobs = self._client.list_blobs(self._bucket, prefix=self._list_prefix())
+            for blob in blobs:
+                tail = blob.name[len(self._list_prefix()) :]
+                dirname, _, filename = tail.partition("/")
+                if dirname.isdigit() and filename:
+                    out.setdefault(int(dirname), {})[filename] = blob.size or 0
+        except self._api_error as exc:
             raise self._wrap("list records", exc) from exc
         return out
 
@@ -183,10 +196,9 @@ class S3Store(StorageBackend):
             if not dest.resolve().is_relative_to(target):
                 continue
             try:
-                key = self._key(record_id, name)
-                response = self._client.get_object(Bucket=self.bucket, Key=key)
-                data = response["Body"].read()
-            except self._client_error as exc:
+                blob = self._bucket.blob(self._key(record_id, name))
+                data = blob.download_as_bytes()
+            except self._api_error as exc:
                 raise self._wrap(f"download record {record_id}", exc) from exc
             _safe_write_cache_file(target, name, data)
         return target
@@ -214,9 +226,10 @@ class S3Store(StorageBackend):
 
     # -- writing ----------------------------------------------------------
 
-    def _put(self, key: str, data: bytes, *, if_none_match: bool = False) -> None:
-        extra: dict[str, Any] = {"IfNoneMatch": "*"} if if_none_match else {}
-        self._client.put_object(Bucket=self.bucket, Key=key, Body=data, **extra)
+    def _put(self, key: str, data: bytes, *, if_absent: bool = False) -> None:
+        blob = self._bucket.blob(key)
+        kwargs: dict[str, Any] = {"if_generation_match": 0} if if_absent else {}
+        blob.upload_from_string(data, **kwargs)
 
     def _claim_id(self) -> int:
         """Claim the next free id with a conditional write; the loser moves on."""
@@ -224,12 +237,11 @@ class S3Store(StorageBackend):
         candidate = max([self._id_hint, *taken], default=0) + 1
         for _ in range(MAX_ID_ATTEMPTS):
             try:
-                self._put(self._key(candidate, CLAIM_NAME), b"", if_none_match=True)
-            except self._client_error as exc:
-                code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
-                if code in {"PreconditionFailed", "ConditionalRequestConflict"}:
-                    candidate += 1  # another writer got there first
-                    continue
+                self._put(self._key(candidate, CLAIM_NAME), b"", if_absent=True)
+            except self._precondition_failed:
+                candidate += 1  # another writer got there first
+                continue
+            except self._api_error as exc:
                 raise self._wrap("claim a record id", exc) from exc
             else:
                 self._id_hint = candidate
@@ -267,7 +279,7 @@ class S3Store(StorageBackend):
             for name, data in files.items():
                 self._put(self._key(record.id, name), data)
             self._put(self._key(record.id, META_NAME), _encode_meta(record))
-        except self._client_error as io_error:
+        except self._api_error as io_error:
             # The claim (and any partial uploads) stay behind, invisible to
             # readers; `quarantine reindex` sweeps them.
             raise self._wrap("write a record", io_error) from io_error
@@ -292,7 +304,7 @@ class S3Store(StorageBackend):
         """Rewrite ``meta.json`` for an existing record."""
         try:
             self._put(self._key(record.id, META_NAME), _encode_meta(record))
-        except self._client_error as exc:
+        except self._api_error as exc:
             raise self._wrap(f"update record {record.id}", exc) from exc
         cached = self._write_cache(record.id, {META_NAME: _encode_meta(record)})
         if record.path is None:
@@ -305,18 +317,27 @@ class S3Store(StorageBackend):
         text = "".join(tb.format_exception(type(exc), exc, exc.__traceback__)).encode("utf-8")
         try:
             self._put(self._key(record.id, TRACEBACK_NAME), text)
-        except self._client_error as io_error:
+        except self._api_error as io_error:
             raise self._wrap(f"update record {record.id}", io_error) from io_error
         self._write_cache(record.id, {TRACEBACK_NAME: text})
 
     # -- deleting ---------------------------------------------------------
 
     def _delete_keys(self, keys: list[str]) -> None:
-        for start in range(0, len(keys), _DELETE_BATCH):
-            batch = [{"Key": key} for key in keys[start : start + _DELETE_BATCH]]
+        """Delete every key, tolerating one already gone (another worker raced us).
+
+        Unlike S3's ``delete_objects``, GCS's ``Blob.delete`` raises ``NotFound``
+        for a key that no longer exists - and since ``clear``/``purge_temp`` list
+        first and delete second, a concurrent deleter can win that race. That is
+        not a failure, so it is swallowed the same way S3's idempotent batch
+        delete absorbs it silently.
+        """
+        for key in keys:
             try:
-                self._client.delete_objects(Bucket=self.bucket, Delete={"Objects": batch})
-            except self._client_error as exc:
+                self._bucket.blob(key).delete()
+            except self._not_found:
+                continue
+            except self._api_error as exc:
                 raise self._wrap("delete records", exc) from exc
 
     def delete(self, record: Record | int) -> None:
@@ -352,7 +373,7 @@ class S3Store(StorageBackend):
     # -- the index --------------------------------------------------------
 
     def rebuild_index(self) -> list[dict[str, Any]]:
-        """S3 keeps no index object: the listing is always live. Returns the rows."""
+        """GCS keeps no index object: the listing is always live. Returns the rows."""
         rows = []
         for record in self.records():
             meta = record.to_meta()
