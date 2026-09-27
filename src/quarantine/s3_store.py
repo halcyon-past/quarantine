@@ -179,7 +179,7 @@ class S3Store(StorageBackend):
                 continue
             dest = target / name
             if dest.is_symlink():
-                continue
+                raise StorageError(f"cache destination cannot be a symlink: {dest}")
             if not dest.resolve().is_relative_to(target):
                 continue
             try:
@@ -188,7 +188,7 @@ class S3Store(StorageBackend):
                 data = response["Body"].read()
             except self._client_error as exc:
                 raise self._wrap(f"download record {record_id}", exc) from exc
-            _safe_write_bytes(dest, data)
+            _safe_write_cache_file(target, name, data)
         return target
 
     def get(self, record_id: int) -> Record:
@@ -282,10 +282,10 @@ class S3Store(StorageBackend):
                 continue
             dest = target / name
             if dest.is_symlink():
-                continue
+                raise StorageError(f"cache destination cannot be a symlink: {dest}")
             if not dest.resolve().is_relative_to(target):
                 continue
-            _safe_write_bytes(dest, data)
+            _safe_write_cache_file(target, name, data)
         return target
 
     def update(self, record: Record) -> None:
@@ -387,16 +387,39 @@ def _is_safe_filename(name: str) -> bool:
     )
 
 
-def _safe_write_bytes(dest: Path, data: bytes) -> None:
-    """Write data to dest, ensuring dest is not a symlink and cannot be traversed."""
+def _safe_write_cache_file(target: Path, name: str, data: bytes) -> None:
+    """Write data to target/name safely using dir_fd/openat without following symlinks."""
+    dest = target / name
     if dest.is_symlink():
         raise StorageError(f"cache destination cannot be a symlink: {dest}")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+
+    file_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        fd = os.open(dest, flags, 0o600)
-    except OSError as exc:
-        raise StorageError(f"cannot safely write {dest}: {exc}") from exc
-    with os.fdopen(fd, "wb") as f:
+        file_flags |= os.O_NOFOLLOW
+
+    if os.open in getattr(os, "supports_dir_fd", set()):
+        dir_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            dir_flags |= os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            dir_flags |= os.O_NOFOLLOW
+        try:
+            target_fd = os.open(target, dir_flags)
+        except OSError as exc:
+            raise StorageError(f"cannot safely open cache directory {target}: {exc}") from exc
+        try:
+            file_fd = os.open(name, file_flags, 0o600, dir_fd=target_fd)
+        except OSError as exc:
+            raise StorageError(f"cannot safely write {dest}: {exc}") from exc
+        finally:
+            os.close(target_fd)
+    else:
+        if not dest.resolve().is_relative_to(target):
+            raise StorageError(f"cache destination escapes target: {dest}")
+        try:
+            file_fd = os.open(dest, file_flags, 0o600)
+        except OSError as exc:
+            raise StorageError(f"cannot safely write {dest}: {exc}") from exc
+
+    with os.fdopen(file_fd, "wb") as f:
         f.write(data)

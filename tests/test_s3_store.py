@@ -332,3 +332,28 @@ def test_symlinked_record_dir_is_rejected(s3_url, module, tmp_path):
     finally:
         if (store._cache / "0001").is_symlink():
             (store._cache / "0001").unlink()
+
+
+def test_symlinked_dest_file_is_rejected(s3_url, module, tmp_path):
+    """A pre-existing file symlink in cache must raise StorageError instead of being followed."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    shutil.rmtree(store._cache, ignore_errors=True)
+    record_dir = store._cache / "0001"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    symlink_target = tmp_path / "sensitive.txt"
+    symlink_target.write_text("sensitive")
+    try:
+        (record_dir / "input.txt").symlink_to(symlink_target)
+    except OSError:
+        pytest.skip("symlinks not supported on this platform/user")
+
+    try:
+        with pytest.raises(StorageError, match="cannot be a symlink"):
+            store.get(1)
+        assert symlink_target.read_text() == "sensitive"
+    finally:
+        if (record_dir / "input.txt").is_symlink():
+            (record_dir / "input.txt").unlink()
