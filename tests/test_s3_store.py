@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 import uuid
 
@@ -266,3 +267,93 @@ def test_the_decorator_takes_a_url(s3_url):
 
     parse({"id": 1})
     assert S3Store(s3_url).count() == 1
+
+
+def test_malicious_object_keys_cannot_escape_cache(s3_url, module):
+    """Objects with traversal characters in their name must not escape the cache directory."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    prefix = s3_url.split(f"{BUCKET}/")[1]
+    _client().put_object(Bucket=BUCKET, Key=f"{prefix}/0001/../../escaped.txt", Body=b"evil")
+    _client().put_object(Bucket=BUCKET, Key=f"{prefix}/0001/nested/bad.txt", Body=b"evil")
+
+    rec = store.get(1)
+    assert rec.id == 1
+    assert not (store._cache.parent / "escaped.txt").exists()
+
+    # Verify that delete() still sweeps these malformed objects from the bucket
+    store.delete(1)
+    res = _client().list_objects_v2(Bucket=BUCKET, Prefix=f"{prefix}/0001")
+    assert "Contents" not in res
+
+
+def test_symlinked_cache_is_rejected(s3_url, module, tmp_path):
+    """A symlink at the cache path must be rejected with StorageError."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    shutil.rmtree(store._cache, ignore_errors=True)
+    symlink_target = tmp_path / "symlink_target"
+    symlink_target.mkdir()
+    try:
+        store._cache.symlink_to(symlink_target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks not supported on this platform/user")
+
+    try:
+        with pytest.raises(StorageError, match="unsafe symlink"):
+            store.get(1)
+    finally:
+        if store._cache.is_symlink():
+            store._cache.unlink()
+
+
+def test_symlinked_record_dir_is_rejected(s3_url, module, tmp_path):
+    """A symlink at the record directory must be rejected with StorageError."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    shutil.rmtree(store._cache, ignore_errors=True)
+    store._cache.mkdir(parents=True, exist_ok=True)
+    symlink_target = tmp_path / "symlink_target"
+    symlink_target.mkdir()
+    try:
+        (store._cache / "0001").symlink_to(symlink_target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks not supported on this platform/user")
+
+    try:
+        with pytest.raises(StorageError, match="unsafe symlink"):
+            store.get(1)
+    finally:
+        if (store._cache / "0001").is_symlink():
+            (store._cache / "0001").unlink()
+
+
+def test_symlinked_dest_file_is_rejected(s3_url, module, tmp_path):
+    """A pre-existing file symlink in cache must raise StorageError instead of being followed."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    shutil.rmtree(store._cache, ignore_errors=True)
+    record_dir = store._cache / "0001"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    symlink_target = tmp_path / "sensitive.txt"
+    symlink_target.write_text("sensitive")
+    try:
+        (record_dir / "input.txt").symlink_to(symlink_target)
+    except OSError:
+        pytest.skip("symlinks not supported on this platform/user")
+
+    try:
+        with pytest.raises(StorageError, match="cannot be a symlink"):
+            store.get(1)
+        assert symlink_target.read_text() == "sensitive"
+    finally:
+        if (record_dir / "input.txt").is_symlink():
+            (record_dir / "input.txt").unlink()

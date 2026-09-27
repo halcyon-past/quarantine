@@ -19,6 +19,7 @@ import textwrap
 import threading
 import urllib.error
 import urllib.request
+import uuid
 from http.server import ThreadingHTTPServer
 
 import pytest
@@ -529,7 +530,7 @@ def test_a_fleet_shares_one_gcs_quarantine(tmp_path, run):
     if client.lookup_bucket(bucket_name) is None:
         client.create_bucket(bucket_name)
 
-    url = f"gs://{bucket_name}/etl/quarantine"
+    url = f"gs://{bucket_name}/etl/{uuid.uuid4().hex}"
     gcs_env = {"STORAGE_EMULATOR_HOST": _GCS_EMULATOR_HOST, "QUARANTINE_URL": url}
 
     _write_script(tmp_path, "worker.py", GCS_WORKER)
