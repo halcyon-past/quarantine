@@ -166,9 +166,9 @@ Installing also puts a `quarantine` command on your `PATH`. Check both halves:
 
 ```bash
 $ quarantine --version
-quarantine 1.0.0
+quarantine 1.2.0
 $ python -c "import quarantine; print(quarantine.__version__)"
-0.1.0
+1.2.0
 ```
 
 If the command is not found (a common `--user` install wrinkle), the module

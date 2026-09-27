@@ -6,8 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-27
+
 ### Added
 - **GCS backend for pluggable storage** ([#53](https://github.com/halcyon-past/quarantine/issues/53)): `dir="gs://bucket/prefix"` (and `--dir`, and `$QUARANTINE_DIR`) joins the S3 backend from [#11](https://github.com/halcyon-past/quarantine/issues/11), giving GCS the same one-shared-quarantine journey for a fleet of ephemeral workers. Installed as an optional extra (`pip install "quarantine-py[gcs]"`) — the core stays zero-dependency. The GCS layout mirrors the local folder and the S3 backend per record; ids are claimed with GCS's `if_generation_match=0` generation precondition and `meta.json` is uploaded last as the commit point, so a reader can never observe a partial record ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). Setup, credentials (Application Default Credentials) and the minimal IAM role (`roles/storage.objectUser`) are documented in [docs/remote-storage.md](docs/remote-storage.md).
+
+### Security
+- **Remote cache traversal and symlink hardening**: reject pre-existing symlinks at the cache directory and record directory targets, prevent directory swap TOCTOU races using atomic `openat`/`dir_fd` writes with `O_NOFOLLOW`, and reject traversal path characters in object keys during materialization.
+- **Remote debris lifecycle cleanup**: retain malformed and traversal-named object keys in `_list_objects()` across GCS and S3 backends so that `delete()`, `clear()`, and `purge_temp()` can discover and sweep them from the bucket.
 
 ## [1.0.0] - 2026-08-31
 
@@ -101,6 +107,7 @@ First release.
   drift from the code.
 - Full type annotations and a `py.typed` marker.
 
+[1.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v1.2.0
 [1.0.0]: https://github.com/halcyon-past/quarantine/releases/tag/v1.0.0
 [0.3.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.2.0
@@ -109,4 +116,5 @@ First release.
 [0.1.2]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.2
 [0.1.1]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.1
 [0.1.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v1.2.0...HEAD
+
