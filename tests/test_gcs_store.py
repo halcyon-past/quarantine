@@ -327,3 +327,18 @@ def test_the_decorator_takes_a_url(gcs_url):
 
     parse({"id": 1})
     assert GCSStore(gcs_url).count() == 1
+
+
+def test_malicious_object_keys_cannot_escape_cache(gcs_url, module):
+    """Objects with traversal characters in their name must not escape the cache directory."""
+    q = Quarantine(gcs_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = GCSStore(gcs_url)
+    prefix = gcs_url.split(f"{BUCKET}/")[1]
+    _put_raw(f"{prefix}/0001/../../escaped.txt", b"evil")
+    _put_raw(f"{prefix}/0001/nested/bad.txt", b"evil")
+
+    rec = store.get(1)
+    assert rec.id == 1
+    assert not (store._cache.parent / "escaped.txt").exists()

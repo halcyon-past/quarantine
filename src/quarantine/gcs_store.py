@@ -139,7 +139,7 @@ class GCSStore(StorageBackend):
             for blob in blobs:
                 tail = blob.name[len(self._list_prefix()) :]
                 dirname, _, filename = tail.partition("/")
-                if dirname.isdigit() and filename:
+                if dirname.isdigit() and filename and _is_safe_filename(filename):
                     out.setdefault(int(dirname), {})[filename] = blob.size or 0
         except self._api_error as exc:
             raise self._wrap("list records", exc) from exc
@@ -164,14 +164,17 @@ class GCSStore(StorageBackend):
 
     def _materialise(self, record_id: int, filenames: Iterable[str]) -> Path:
         """Download one record's files into the local cache, returning its directory."""
-        target = self._cache / f"{record_id:04d}"
+        target = (self._cache / f"{record_id:04d}").resolve()
         target.mkdir(parents=True, exist_ok=True)
         for name in filenames:
-            if name == CLAIM_NAME:
+            if name == CLAIM_NAME or not _is_safe_filename(name):
+                continue
+            dest = (target / name).resolve()
+            if not dest.is_relative_to(target):
                 continue
             try:
                 blob = self._bucket.blob(self._key(record_id, name))
-                (target / name).write_bytes(blob.download_as_bytes())
+                dest.write_bytes(blob.download_as_bytes())
             except self._api_error as exc:
                 raise self._wrap(f"download record {record_id}", exc) from exc
         return target
@@ -362,3 +365,14 @@ class GCSStore(StorageBackend):
 
 def _encode_meta(record: Record) -> bytes:
     return json.dumps(record.to_meta(), indent=2, default=str).encode("utf-8")
+
+
+def _is_safe_filename(name: str) -> bool:
+    """Return whether ``name`` is a single safe basename with no path traversal."""
+    return (
+        bool(name)
+        and "/" not in name
+        and "\\" not in name
+        and name not in {".", ".."}
+        and Path(name).name == name
+    )

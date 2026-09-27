@@ -53,10 +53,19 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           docker run -d -p 4443:4443 --name fake-gcs fsouza/fake-gcs-server -scheme http
+          ready=0
           for i in $(seq 1 10); do
-            curl -sf http://localhost:4443/storage/v1/b > /dev/null && break
+            if curl -sf http://localhost:4443/storage/v1/b > /dev/null; then
+              ready=1
+              break
+            fi
             sleep 1
           done
+          if [ "$ready" -ne 1 ]; then
+            echo "::error::fake-gcs-server failed to start"
+            docker logs fake-gcs || true
+            exit 1
+          fi
       - name: pytest
         run: >-
           pytest --cov --cov-report=xml --cov-report=term

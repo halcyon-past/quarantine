@@ -126,7 +126,7 @@ class S3Store(StorageBackend):
                 for item in page.get("Contents", []):
                     tail = item["Key"][len(self._list_prefix()) :]
                     dirname, _, filename = tail.partition("/")
-                    if dirname.isdigit() and filename:
+                    if dirname.isdigit() and filename and _is_safe_filename(filename):
                         out.setdefault(int(dirname), {})[filename] = item["Size"]
         except self._client_error as exc:
             raise self._wrap("list records", exc) from exc
@@ -151,15 +151,18 @@ class S3Store(StorageBackend):
 
     def _materialise(self, record_id: int, filenames: Iterable[str]) -> Path:
         """Download one record's files into the local cache, returning its directory."""
-        target = self._cache / f"{record_id:04d}"
+        target = (self._cache / f"{record_id:04d}").resolve()
         target.mkdir(parents=True, exist_ok=True)
         for name in filenames:
-            if name == CLAIM_NAME:
+            if name == CLAIM_NAME or not _is_safe_filename(name):
+                continue
+            dest = (target / name).resolve()
+            if not dest.is_relative_to(target):
                 continue
             try:
                 key = self._key(record_id, name)
                 response = self._client.get_object(Bucket=self.bucket, Key=key)
-                (target / name).write_bytes(response["Body"].read())
+                dest.write_bytes(response["Body"].read())
             except self._client_error as exc:
                 raise self._wrap(f"download record {record_id}", exc) from exc
         return target
@@ -341,3 +344,14 @@ class S3Store(StorageBackend):
 
 def _encode_meta(record: Record) -> bytes:
     return json.dumps(record.to_meta(), indent=2, default=str).encode("utf-8")
+
+
+def _is_safe_filename(name: str) -> bool:
+    """Return whether ``name`` is a single safe basename with no path traversal."""
+    return (
+        bool(name)
+        and "/" not in name
+        and "\\" not in name
+        and name not in {".", ".."}
+        and Path(name).name == name
+    )
