@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import threading
@@ -126,7 +127,7 @@ class S3Store(StorageBackend):
                 for item in page.get("Contents", []):
                     tail = item["Key"][len(self._list_prefix()) :]
                     dirname, _, filename = tail.partition("/")
-                    if dirname.isdigit() and filename and _is_safe_filename(filename):
+                    if dirname.isdigit() and filename:
                         out.setdefault(int(dirname), {})[filename] = item["Size"]
         except self._client_error as exc:
             raise self._wrap("list records", exc) from exc
@@ -149,22 +150,45 @@ class S3Store(StorageBackend):
         """How many committed records the prefix holds."""
         return len(self._committed_ids())
 
+    def _safe_target_dir(self, record_id: int) -> Path:
+        """Create and validate the cache directory for record_id, rejecting symlinks."""
+        if self._cache.is_symlink():
+            raise StorageError(f"cache directory is an unsafe symlink: {self._cache}")
+        self._cache.mkdir(parents=True, exist_ok=True)
+        if self._cache.is_symlink():
+            raise StorageError(f"cache directory is an unsafe symlink: {self._cache}")
+
+        target = self._cache / f"{record_id:04d}"
+        if target.is_symlink():
+            raise StorageError(f"cache record directory is an unsafe symlink: {target}")
+        target.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink():
+            raise StorageError(f"cache record directory is an unsafe symlink: {target}")
+
+        target_resolved = target.resolve()
+        cache_resolved = self._cache.resolve()
+        if not target_resolved.is_relative_to(cache_resolved) or target_resolved == cache_resolved:
+            raise StorageError(f"cache record directory escapes cache: {target}")
+        return target_resolved
+
     def _materialise(self, record_id: int, filenames: Iterable[str]) -> Path:
         """Download one record's files into the local cache, returning its directory."""
-        target = (self._cache / f"{record_id:04d}").resolve()
-        target.mkdir(parents=True, exist_ok=True)
+        target = self._safe_target_dir(record_id)
         for name in filenames:
             if name == CLAIM_NAME or not _is_safe_filename(name):
                 continue
-            dest = (target / name).resolve()
-            if not dest.is_relative_to(target):
+            dest = target / name
+            if dest.is_symlink():
+                continue
+            if not dest.resolve().is_relative_to(target):
                 continue
             try:
                 key = self._key(record_id, name)
                 response = self._client.get_object(Bucket=self.bucket, Key=key)
-                dest.write_bytes(response["Body"].read())
+                data = response["Body"].read()
             except self._client_error as exc:
                 raise self._wrap(f"download record {record_id}", exc) from exc
+            _safe_write_bytes(dest, data)
         return target
 
     def get(self, record_id: int) -> Record:
@@ -252,10 +276,16 @@ class S3Store(StorageBackend):
         return record
 
     def _write_cache(self, record_id: int, files: dict[str, bytes]) -> Path:
-        target = self._cache / f"{record_id:04d}"
-        target.mkdir(parents=True, exist_ok=True)
+        target = self._safe_target_dir(record_id)
         for name, data in files.items():
-            (target / name).write_bytes(data)
+            if not _is_safe_filename(name):
+                continue
+            dest = target / name
+            if dest.is_symlink():
+                continue
+            if not dest.resolve().is_relative_to(target):
+                continue
+            _safe_write_bytes(dest, data)
         return target
 
     def update(self, record: Record) -> None:
@@ -355,3 +385,18 @@ def _is_safe_filename(name: str) -> bool:
         and name not in {".", ".."}
         and Path(name).name == name
     )
+
+
+def _safe_write_bytes(dest: Path, data: bytes) -> None:
+    """Write data to dest, ensuring dest is not a symlink and cannot be traversed."""
+    if dest.is_symlink():
+        raise StorageError(f"cache destination cannot be a symlink: {dest}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(dest, flags, 0o600)
+    except OSError as exc:
+        raise StorageError(f"cannot safely write {dest}: {exc}") from exc
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)

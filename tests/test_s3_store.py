@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 import uuid
 
@@ -281,3 +282,53 @@ def test_malicious_object_keys_cannot_escape_cache(s3_url, module):
     rec = store.get(1)
     assert rec.id == 1
     assert not (store._cache.parent / "escaped.txt").exists()
+
+    # Verify that delete() still sweeps these malformed objects from the bucket
+    store.delete(1)
+    res = _client().list_objects_v2(Bucket=BUCKET, Prefix=f"{prefix}/0001")
+    assert "Contents" not in res
+
+
+def test_symlinked_cache_is_rejected(s3_url, module, tmp_path):
+    """A symlink at the cache path must be rejected with StorageError."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    shutil.rmtree(store._cache, ignore_errors=True)
+    symlink_target = tmp_path / "symlink_target"
+    symlink_target.mkdir()
+    try:
+        store._cache.symlink_to(symlink_target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks not supported on this platform/user")
+
+    try:
+        with pytest.raises(StorageError, match="unsafe symlink"):
+            store.get(1)
+    finally:
+        if store._cache.is_symlink():
+            store._cache.unlink()
+
+
+def test_symlinked_record_dir_is_rejected(s3_url, module, tmp_path):
+    """A symlink at the record directory must be rejected with StorageError."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    shutil.rmtree(store._cache, ignore_errors=True)
+    store._cache.mkdir(parents=True, exist_ok=True)
+    symlink_target = tmp_path / "symlink_target"
+    symlink_target.mkdir()
+    try:
+        (store._cache / "0001").symlink_to(symlink_target, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks not supported on this platform/user")
+
+    try:
+        with pytest.raises(StorageError, match="unsafe symlink"):
+            store.get(1)
+    finally:
+        if (store._cache / "0001").is_symlink():
+            (store._cache / "0001").unlink()
