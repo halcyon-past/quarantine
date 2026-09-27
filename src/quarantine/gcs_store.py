@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import threading
@@ -139,7 +140,7 @@ class GCSStore(StorageBackend):
             for blob in blobs:
                 tail = blob.name[len(self._list_prefix()) :]
                 dirname, _, filename = tail.partition("/")
-                if dirname.isdigit() and filename and _is_safe_filename(filename):
+                if dirname.isdigit() and filename:
                     out.setdefault(int(dirname), {})[filename] = blob.size or 0
         except self._api_error as exc:
             raise self._wrap("list records", exc) from exc
@@ -162,21 +163,44 @@ class GCSStore(StorageBackend):
         """How many committed records the prefix holds."""
         return len(self._committed_ids())
 
+    def _safe_target_dir(self, record_id: int) -> Path:
+        """Create and validate the cache directory for record_id, rejecting symlinks."""
+        if self._cache.is_symlink():
+            raise StorageError(f"cache directory is an unsafe symlink: {self._cache}")
+        self._cache.mkdir(parents=True, exist_ok=True)
+        if self._cache.is_symlink():
+            raise StorageError(f"cache directory is an unsafe symlink: {self._cache}")
+
+        target = self._cache / f"{record_id:04d}"
+        if target.is_symlink():
+            raise StorageError(f"cache record directory is an unsafe symlink: {target}")
+        target.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink():
+            raise StorageError(f"cache record directory is an unsafe symlink: {target}")
+
+        target_resolved = target.resolve()
+        cache_resolved = self._cache.resolve()
+        if not target_resolved.is_relative_to(cache_resolved) or target_resolved == cache_resolved:
+            raise StorageError(f"cache record directory escapes cache: {target}")
+        return target_resolved
+
     def _materialise(self, record_id: int, filenames: Iterable[str]) -> Path:
         """Download one record's files into the local cache, returning its directory."""
-        target = (self._cache / f"{record_id:04d}").resolve()
-        target.mkdir(parents=True, exist_ok=True)
+        target = self._safe_target_dir(record_id)
         for name in filenames:
             if name == CLAIM_NAME or not _is_safe_filename(name):
                 continue
-            dest = (target / name).resolve()
-            if not dest.is_relative_to(target):
+            dest = target / name
+            if dest.is_symlink():
+                raise StorageError(f"cache destination cannot be a symlink: {dest}")
+            if not dest.resolve().is_relative_to(target):
                 continue
             try:
                 blob = self._bucket.blob(self._key(record_id, name))
-                dest.write_bytes(blob.download_as_bytes())
+                data = blob.download_as_bytes()
             except self._api_error as exc:
                 raise self._wrap(f"download record {record_id}", exc) from exc
+            _safe_write_cache_file(target, name, data)
         return target
 
     def get(self, record_id: int) -> Record:
@@ -264,10 +288,16 @@ class GCSStore(StorageBackend):
         return record
 
     def _write_cache(self, record_id: int, files: dict[str, bytes]) -> Path:
-        target = self._cache / f"{record_id:04d}"
-        target.mkdir(parents=True, exist_ok=True)
+        target = self._safe_target_dir(record_id)
         for name, data in files.items():
-            (target / name).write_bytes(data)
+            if not _is_safe_filename(name):
+                continue
+            dest = target / name
+            if dest.is_symlink():
+                raise StorageError(f"cache destination cannot be a symlink: {dest}")
+            if not dest.resolve().is_relative_to(target):
+                continue
+            _safe_write_cache_file(target, name, data)
         return target
 
     def update(self, record: Record) -> None:
@@ -376,3 +406,41 @@ def _is_safe_filename(name: str) -> bool:
         and name not in {".", ".."}
         and Path(name).name == name
     )
+
+
+def _safe_write_cache_file(target: Path, name: str, data: bytes) -> None:
+    """Write data to target/name safely using dir_fd/openat without following symlinks."""
+    dest = target / name
+    if dest.is_symlink():
+        raise StorageError(f"cache destination cannot be a symlink: {dest}")
+
+    file_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_NOFOLLOW"):
+        file_flags |= os.O_NOFOLLOW
+
+    if os.open in getattr(os, "supports_dir_fd", set()):
+        dir_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            dir_flags |= os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            dir_flags |= os.O_NOFOLLOW
+        try:
+            target_fd = os.open(target, dir_flags)
+        except OSError as exc:
+            raise StorageError(f"cannot safely open cache directory {target}: {exc}") from exc
+        try:
+            file_fd = os.open(name, file_flags, 0o600, dir_fd=target_fd)
+        except OSError as exc:
+            raise StorageError(f"cannot safely write {dest}: {exc}") from exc
+        finally:
+            os.close(target_fd)
+    else:
+        if not dest.resolve().is_relative_to(target):
+            raise StorageError(f"cache destination escapes target: {dest}")
+        try:
+            file_fd = os.open(dest, file_flags, 0o600)
+        except OSError as exc:
+            raise StorageError(f"cannot safely write {dest}: {exc}") from exc
+
+    with os.fdopen(file_fd, "wb") as f:
+        f.write(data)
