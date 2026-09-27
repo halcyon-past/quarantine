@@ -1,0 +1,4 @@
+[report]
+fail_under = 90
+omit =
+    */gcs_store.py

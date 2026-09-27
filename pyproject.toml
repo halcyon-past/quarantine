@@ -44,6 +44,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "hypothesis>=6.100",
     "boto3>=1.35",
+    "google-cloud-storage>=2.10",
     "moto[s3,server]>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
@@ -53,12 +54,16 @@ s3 = [
 ]
 all = [
     "boto3>=1.35",
+    "google-cloud-storage>=2.10"
 ]
 docs = [
     "mkdocs-material>=9.5",
 ]
 bench = [
     "pyperf>=2.6",
+]
+gcs = [
+    "google-cloud-storage"
 ]
 
 [project.urls]
@@ -106,7 +111,7 @@ addopts = [
     "--strict-config",
     "--import-mode=importlib",
 ]
-filterwarnings = ["error"]
+filterwarnings = ["error","ignore:Type google._upb._message:DeprecationWarning","ignore:.*Google will stop supporting.*:FutureWarning:google.api_core.*"]
 asyncio_mode = "auto"
 xfail_strict = true
 markers = [
@@ -208,7 +213,7 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 [[tool.mypy.overrides]]
 # boto3 is untyped, and moto's typed internals reach numpy stubs that need a
 # newer Python than our 3.10 target - do not follow either family of imports.
-module = ["boto3.*", "botocore.*", "moto.*"]
+module = ["boto3.*", "botocore.*", "moto.*","google.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 
