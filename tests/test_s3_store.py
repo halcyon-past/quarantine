@@ -266,3 +266,18 @@ def test_the_decorator_takes_a_url(s3_url):
 
     parse({"id": 1})
     assert S3Store(s3_url).count() == 1
+
+
+def test_malicious_object_keys_cannot_escape_cache(s3_url, module):
+    """Objects with traversal characters in their name must not escape the cache directory."""
+    q = Quarantine(s3_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+
+    store = S3Store(s3_url)
+    prefix = s3_url.split(f"{BUCKET}/")[1]
+    _client().put_object(Bucket=BUCKET, Key=f"{prefix}/0001/../../escaped.txt", Body=b"evil")
+    _client().put_object(Bucket=BUCKET, Key=f"{prefix}/0001/nested/bad.txt", Body=b"evil")
+
+    rec = store.get(1)
+    assert rec.id == 1
+    assert not (store._cache.parent / "escaped.txt").exists()
