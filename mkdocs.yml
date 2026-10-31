@@ -39,7 +39,7 @@ extra:
     - icon: material/web
       link: https://www.aritro.cloud/projects/quarantine
       name: Architecture Case Study by Aritro Saha
-    - icon: simple/linkedin
+    - icon: fontawesome/brands/linkedin
       link: https://linkedin.com/in/aritro-saha
       name: Aritro Saha on LinkedIn
 

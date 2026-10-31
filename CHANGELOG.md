@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Azure Blob Storage backend for pluggable storage** ([#54](https://github.com/halcyon-past/quarantine/issues/54)): `dir="azure://container/prefix"` (and `az://`, `--dir`, and `$QUARANTINE_DIR`) joins the S3 and GCS backends, giving Azure Blob Storage the same one-shared-quarantine journey for a fleet of ephemeral workers. Installed as an optional extra (`pip install "quarantine-py[azure]"`) — the core stays zero-dependency. The Azure layout mirrors the local folder and the S3/GCS backends per record; ids are claimed with Azure's conditional write (`overwrite=False` sending `If-None-Match: *`) and `meta.json` is uploaded last as the commit point, so a reader can never observe a partial record ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). Setup, credentials (connection strings, account keys, SAS tokens, and Managed Identity via `DefaultAzureCredential`) and the minimal RBAC role (`Storage Blob Data Contributor`) are documented in [docs/remote-storage.md](docs/remote-storage.md).
+
 ## [1.2.0] - 2026-09-27
 
 ### Added

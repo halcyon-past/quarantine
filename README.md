@@ -159,7 +159,7 @@ pip install -e ".[dev]"       # includes pytest, ruff, mypy, hypothesis
 | | |
 |---|---|
 | Python | 3.10 or newer (CPython; tested on 3.10 - 3.13) |
-| Runtime dependencies | none - it is standard library only. (The optional `s3://` backend adds boto3: `pip install "quarantine-py[s3]"`.) |
+| Runtime dependencies | none - it is standard library only. (The optional `s3://`, `gs://`, and `azure://` backends add their client libraries: `pip install "quarantine-py[s3]"`, `[gcs]`, or `[azure]`.) |
 | Operating systems | Linux, macOS, Windows (tested on all three in CI) |
 | Type checking | Fully typed, ships `py.typed` - works with mypy and Pyright out of the box (the codebase itself passes strict mypy) |
 
@@ -253,7 +253,7 @@ Tune it: `@quarantine(halt_after=100)`.
 
 ```python
 @quarantine(
-    dir=".quarantine",  # where the sick bay lives - a folder, or s3://bucket/prefix
+    dir=".quarantine",  # where the sick bay lives - a folder, or s3://, gs://, azure://
     only=(ValueError, KeyError),  # only quarantine these; others still crash
     halt_after=50,  # consecutive-failure circuit breaker
     max_items=10_000,  # cap disk usage
@@ -425,14 +425,14 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | [docs/cli.md](https://quarantine-py.aritro.cloud/cli/) | Every command, flag and exit code, with output samples. |
 | [docs/api.md](https://quarantine-py.aritro.cloud/api/) | Complete Python API reference. |
 | [docs/on-disk-format.md](https://quarantine-py.aritro.cloud/on-disk-format/) | What is in `.quarantine/`, and the guarantees about it. |
-| [docs/remote-storage.md](https://quarantine-py.aritro.cloud/remote-storage/) | One shared quarantine on S3 for a fleet of workers: setup, credentials, IAM. |
+| [docs/remote-storage.md](https://quarantine-py.aritro.cloud/remote-storage/) | One shared quarantine on S3, GCS, or Azure Blob Storage for a fleet of workers: setup, credentials, IAM. |
 | [docs/observability.md](https://quarantine-py.aritro.cloud/observability/) | Wiring the hooks into Prometheus, Datadog, Sentry and plain logging. |
 | [docs/benchmarks.md](https://quarantine-py.aritro.cloud/benchmarks/) | What the decorator costs when nothing fails, with the methodology. |
 | [docs/troubleshooting.md](https://quarantine-py.aritro.cloud/troubleshooting/) | "It skipped my item", "retry says it cannot import", and friends. |
 | [docs/faq.md](https://quarantine-py.aritro.cloud/faq/) | Longer answers to the questions below. |
 | [docs/adr/](https://quarantine-py.aritro.cloud/adr/) | Architecture decision records: why rename-based atomicity, why not JSONL, why pickle-first, and friends. |
 | [CHANGELOG.md](https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md) | What changed, and when. |
-| [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md) | What is coming next - more storage backends (GCS, Azure, Redis, Databricks) - and why. |
+| [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md) | What is coming next - more storage backends (Redis, Databricks) - and why. |
 | [SECURITY.md](https://github.com/halcyon-past/quarantine/blob/main/SECURITY.md) | Reporting vulnerabilities, the threat model, and the supply-chain posture. |
 | [CONTRIBUTING.md](https://github.com/halcyon-past/quarantine/blob/main/CONTRIBUTING.md) | Setup, the checks, and the ground rules for changes. |
 

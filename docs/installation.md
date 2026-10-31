@@ -22,6 +22,19 @@ The package lives at
 pip install quarantine-py
 ```
 
+### Remote storage extras
+
+The core package has zero runtime dependencies. Optional extras add client libraries for remote backends:
+
+```bash
+pip install "quarantine-py[s3]"     # AWS S3 (boto3)
+pip install "quarantine-py[gcs]"    # Google Cloud Storage (google-cloud-storage)
+pip install "quarantine-py[azure]"  # Azure Blob Storage (azure-storage-blob)
+pip install "quarantine-py[all]"    # All remote backends
+```
+
+See [remote storage](remote-storage.md) for full configuration, credentials and IAM setup.
+
 Releases are built in CI and published to PyPI with [trusted
 publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) - no long-lived
 API keys and no manual uploads sit between the tagged source and the wheel

@@ -11,6 +11,7 @@ Run just this suite with ``pytest -m regression``.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -565,4 +566,100 @@ def test_a_fleet_shares_one_gcs_quarantine(tmp_path, run):
     assert "2 recovered" in fixed.stdout
 
     after = run("-m", "quarantine", "list", "--dir", url, extra_env=gcs_env)
+    assert "Nothing quarantined" in after.stdout
+
+
+def _azurite_reachable(host: str) -> bool:
+    try:
+        urllib.request.urlopen(f"{host}/devstoreaccount1?comp=list", timeout=1)
+    except (urllib.error.URLError, OSError):
+        return False
+    return True
+
+
+_AZURITE_HOST = os.environ.get("AZURE_STORAGE_EMULATOR_HOST", "http://127.0.0.1:10000")
+
+AZURE_WORKER = """
+import os
+import sys
+
+from quarantine import quarantine
+
+URL = os.environ["QUARANTINE_URL"]
+
+
+@quarantine(dir=URL, halt_after=None, report=False, retries=0)
+def process(item):
+    if item.endswith("bad") and os.environ.get("FIXED") != "1":
+        raise ValueError(f"cannot process {item}")
+    return item
+
+
+if __name__ == "__main__":
+    tag = sys.argv[1]
+    for suffix in ["ok-1", "bad", "ok-2"]:
+        process(f"{tag}-{suffix}")
+"""
+
+
+@pytest.mark.skipif(
+    not _azurite_reachable(_AZURITE_HOST),
+    reason=(
+        f"Azurite not reachable at {_AZURITE_HOST} - "
+        f"run `docker run -d -p 10000:10000 mcr.microsoft.com/azure-storage/azurite`"
+    ),
+)
+def test_a_fleet_shares_one_azure_quarantine(tmp_path, run):
+    """Issue #54's journey: ephemeral workers quarantine into one Azure container,
+    and the failures are inspected and replayed from a different machine."""
+    from azure.storage.blob import ContainerClient
+
+    conn_str = (
+        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+        f"BlobEndpoint={_AZURITE_HOST}/devstoreaccount1;"
+    )
+    container_name = "fleet-container-azure"
+    client = ContainerClient.from_connection_string(conn_str, container_name=container_name)
+    with contextlib.suppress(Exception):
+        client.create_container()
+
+    url = f"azure://{container_name}/etl/{uuid.uuid4().hex}"
+    azure_env = {
+        "AZURE_STORAGE_CONNECTION_STRING": conn_str,
+        "QUARANTINE_URL": url,
+    }
+
+    _write_script(tmp_path, "worker.py", AZURE_WORKER)
+
+    # 1. two ephemeral "pods" run the job; their local disks tell no tales
+    for tag in ["w1", "w2"]:
+        result = run("worker.py", tag, extra_env=azure_env)
+        assert result.returncode == 0, result.stderr
+
+    # 2. from "the laptop": one shared store holds exactly the two failures
+    listed = run("-m", "quarantine", "list", "--dir", url, "--json", extra_env=azure_env)
+    assert listed.returncode == 0, listed.stderr
+    records = json.loads(listed.stdout)
+    assert sorted(r["error"] for r in records) == [
+        "cannot process w1-bad",
+        "cannot process w2-bad",
+    ]
+    assert [r["id"] for r in records] == [1, 2], "claimed ids never collided"
+
+    # 3. fix the bug, replay only the failures, the container empties
+    fixed = run(
+        "-m",
+        "quarantine",
+        "retry",
+        "--dir",
+        url,
+        "--import",
+        "worker.py",
+        extra_env={**azure_env, "FIXED": "1"},
+    )
+    assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    assert "2 recovered" in fixed.stdout
+
+    after = run("-m", "quarantine", "list", "--dir", url, extra_env=azure_env)
     assert "Nothing quarantined" in after.stdout
