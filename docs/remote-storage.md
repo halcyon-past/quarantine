@@ -1,3 +1,8 @@
+---
+title: Remote Cloud Storage Backends (S3, GCS, Azure Blob) · quarantine-py
+description: Pluggable remote storage for Python dead-letter queues. Share one quarantine across Kubernetes, Docker, and Lambda fleets on AWS S3, Google Cloud Storage, or Azure Blob Storage.
+---
+
 # Remote storage
 
 [← docs index](index.md)

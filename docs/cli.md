@@ -1,3 +1,8 @@
+---
+title: CLI Reference & Commands (list, retry, debug, clear) · quarantine-py
+description: Command-line reference for quarantine. Commands, flags, exit codes, and output samples for list, show, retry, debug, clear, stats, and ui.
+---
+
 # Command-line reference
 
 [← docs index](index.md)

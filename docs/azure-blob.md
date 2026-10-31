@@ -1,3 +1,8 @@
+---
+title: Azure Blob Storage Backend, Managed Identity & RBAC Guide · quarantine-py
+description: Complete guide for Azure Blob Storage dead-letter queues. Entra ID Managed Identity, AKS Workload Identity, connection strings, RBAC roles, and Azurite emulator.
+---
+
 # Azure Blob Storage Remote Storage
 
 [← remote storage overview](remote-storage.md) · [docs index](index.md)

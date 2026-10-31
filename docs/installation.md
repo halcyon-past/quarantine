@@ -1,3 +1,8 @@
+---
+title: Installation, Requirements & Cloud Storage Extras · quarantine-py
+description: Install quarantine-py via pip or conda with zero runtime dependencies. Optional extras for AWS S3, Google Cloud Storage, and Azure Blob Storage.
+---
+
 # Installation
 
 [← docs index](index.md)

@@ -1,3 +1,8 @@
+---
+title: Google Cloud Storage (GCS) Backend & Workload Identity Guide · quarantine-py
+description: Complete guide for Google Cloud Storage dead-letter queues. Application Default Credentials (ADC), GKE Workload Identity, IAM roles, CMEK, and fake-gcs-server.
+---
+
 # Google Cloud Storage (GCS) Remote Storage
 
 [← remote storage overview](remote-storage.md) · [docs index](index.md)

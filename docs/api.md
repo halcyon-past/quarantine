@@ -1,3 +1,8 @@
+---
+title: Complete Python API Reference (@quarantine, shield, ashield) · quarantine-py
+description: Complete API reference for quarantine-py. Parameters and return values for @quarantine, shield, ashield, Record, Store, and StorageBackend.
+---
+
 # Python API reference
 
 [← docs index](index.md)

@@ -1,3 +1,8 @@
+---
+title: AWS S3 Storage Backend Setup, IAM & IRSA Guide · quarantine-py
+description: Complete guide for AWS S3 dead-letter queue storage. Setup boto3 credentials, IRSA, ECS task roles, least-privilege IAM policies, SSE-KMS, and LocalStack.
+---
+
 # AWS S3 Remote Storage
 
 [← remote storage overview](remote-storage.md) · [docs index](index.md)

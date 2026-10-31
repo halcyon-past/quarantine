@@ -6,9 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-01
+
 ### Added
 - **Azure Blob Storage backend for pluggable storage** ([#54](https://github.com/halcyon-past/quarantine/issues/54)): `dir="azure://container/prefix"` (and `az://`, `--dir`, and `$QUARANTINE_DIR`) joins the S3 and GCS backends, giving Azure Blob Storage the same one-shared-quarantine journey for a fleet of ephemeral workers. Installed as an optional extra (`pip install "quarantine-py[azure]"`) — the core stays zero-dependency. The Azure layout mirrors the local folder and the S3/GCS backends per record; ids are claimed with Azure's conditional write (`overwrite=False` sending `If-None-Match: *`) and `meta.json` is uploaded last as the commit point, so a reader can never observe a partial record ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). Setup, credentials (connection strings, account keys, SAS tokens, and Managed Identity via `DefaultAzureCredential`) and the minimal RBAC role (`Storage Blob Data Contributor`) are documented in [docs/remote-storage.md](docs/remote-storage.md) and [docs/azure-blob.md](docs/azure-blob.md).
 - **Dedicated cloud storage guides**: added comprehensive, standalone documentation pages for [AWS S3](docs/aws-s3.md), [Google Cloud Storage](docs/gcp-gcs.md), and [Azure Blob Storage](docs/azure-blob.md) covering installation, authentication architectures (IRSA, ADC, Managed Identity), least-privilege IAM/RBAC policies, emulator setup, and common FAQs.
+- **Search Engine & Generative Engine Optimization (SEO/GEO)**: expanded structured metadata across documentation pages, added `llms.txt`, `llms-full.txt`, `ai.txt`, OpenGraph/Twitter summary cards, and Schema.org `SoftwareSourceCode` and `Author` knowledge graphs.
 
 ## [1.2.0] - 2026-09-27
 
@@ -111,6 +114,7 @@ First release.
   drift from the code.
 - Full type annotations and a `py.typed` marker.
 
+[2.0.0]: https://github.com/halcyon-past/quarantine/releases/tag/v2.0.0
 [1.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v1.2.0
 [1.0.0]: https://github.com/halcyon-past/quarantine/releases/tag/v1.0.0
 [0.3.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.3.0
@@ -120,5 +124,5 @@ First release.
 [0.1.2]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.2
 [0.1.1]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.1
 [0.1.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v2.0.0...HEAD
 

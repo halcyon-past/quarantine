@@ -1,3 +1,8 @@
+---
+title: Success-Path Performance Benchmarks & Overhead · quarantine-py
+description: Reproducible pyperf benchmarks measuring success-path decorator overhead against bare function calls and manual try/except blocks.
+---
+
 # Benchmarks
 
 [← docs index](index.md)
