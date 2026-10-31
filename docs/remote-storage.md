@@ -5,8 +5,16 @@
 `.quarantine/` on a local disk is exactly right for a script on your laptop —
 and exactly wrong for Kubernetes, AWS Lambda, Docker, or any fleet of workers
 whose disks evaporate with the container. Remote backends give all of them
-**one shared quarantine**: workers set failures aside in a bucket, and you
-inspect and replay them from your own machine.
+**one shared quarantine**: workers set failures aside in a bucket or container,
+and you inspect and replay them from your own machine.
+
+### Dedicated Cloud Storage Guides
+
+Detailed setup, credentials, least-privilege IAM policies, FAQs, and consistency guarantees are documented for each provider:
+
+- **[AWS S3 Guide](aws-s3.md)** (`s3://bucket/prefix`) — IAM roles, IRSA, ECS tasks, KMS, and LocalStack.
+- **[Google Cloud Storage (GCS) Guide](gcp-gcs.md)** (`gs://bucket/prefix`) — ADC, GKE Workload Identity, CMEK, and fake-gcs-server.
+- **[Azure Blob Storage Guide](azure-blob.md)** (`azure://container/prefix` or `az://`) — Entra ID Managed Identity, connection strings, AKS Workload Identity, RBAC, and Azurite.
 
 ## Using the S3 backend
 

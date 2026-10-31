@@ -61,7 +61,11 @@ nav:
   - CLI reference: cli.md
   - API reference: api.md
   - On-disk format: on-disk-format.md
-  - Remote storage: remote-storage.md
+  - Remote storage:
+      - Overview: remote-storage.md
+      - AWS S3: aws-s3.md
+      - Google Cloud Storage: gcp-gcs.md
+      - Azure Blob Storage: azure-blob.md
   - Benchmarks: benchmarks.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md

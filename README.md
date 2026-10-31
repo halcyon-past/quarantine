@@ -426,6 +426,9 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | [docs/api.md](https://quarantine-py.aritro.cloud/api/) | Complete Python API reference. |
 | [docs/on-disk-format.md](https://quarantine-py.aritro.cloud/on-disk-format/) | What is in `.quarantine/`, and the guarantees about it. |
 | [docs/remote-storage.md](https://quarantine-py.aritro.cloud/remote-storage/) | One shared quarantine on S3, GCS, or Azure Blob Storage for a fleet of workers: setup, credentials, IAM. |
+| [docs/aws-s3.md](https://quarantine-py.aritro.cloud/aws-s3/) | AWS S3 guide: IAM policies, ECS/EKS/Lambda auth, SSE-KMS, and LocalStack. |
+| [docs/gcp-gcs.md](https://quarantine-py.aritro.cloud/gcp-gcs/) | Google Cloud Storage guide: ADC, GKE Workload Identity, CMEK, and fake-gcs-server. |
+| [docs/azure-blob.md](https://quarantine-py.aritro.cloud/azure-blob/) | Azure Blob Storage guide: Entra ID Managed Identity, connection strings, AKS, and Azurite. |
 | [docs/observability.md](https://quarantine-py.aritro.cloud/observability/) | Wiring the hooks into Prometheus, Datadog, Sentry and plain logging. |
 | [docs/benchmarks.md](https://quarantine-py.aritro.cloud/benchmarks/) | What the decorator costs when nothing fails, with the methodology. |
 | [docs/troubleshooting.md](https://quarantine-py.aritro.cloud/troubleshooting/) | "It skipped my item", "retry says it cannot import", and friends. |
