@@ -713,6 +713,18 @@ def test_url_with_fqdn_and_sovereign_clouds(monkeypatch):
     with pytest.raises(StorageError, match="missing a container name"):
         AzureBlobStore("azure://myacc.blob.core.windows.net/")
 
+    # FQDN format without trailing slash and no prefix
+    url_fqdn_no_slash = "azure://myacc.blob.core.windows.net/mycontainer"
+    store_fqdn = AzureBlobStore(url_fqdn_no_slash, container_client=FakeContainerClient())
+    assert store_fqdn.container_name == "mycontainer"
+    assert store_fqdn.prefix == ""
+
+    # FQDN format with trailing slash and no prefix
+    url_fqdn_slash = "azure://myacc.blob.core.windows.net/mycontainer/"
+    store_fqdn_slash = AzureBlobStore(url_fqdn_slash, container_client=FakeContainerClient())
+    assert store_fqdn_slash.container_name == "mycontainer"
+    assert store_fqdn_slash.prefix == ""
+
 
 def test_service_request_transport_error(azure_url, monkeypatch):
     from azure.core.exceptions import ServiceRequestError

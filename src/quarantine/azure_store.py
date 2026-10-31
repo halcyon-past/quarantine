@@ -38,6 +38,7 @@ import os
 import shutil
 import tempfile
 import threading
+import urllib.parse
 from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -117,7 +118,11 @@ class AzureBlobStore(StorageBackend):
         if ".blob.core." in container:
             custom_endpoint = f"https://{container}"
             account, _, _ = container.partition(".")
-            container, _, prefix = prefix.partition("/")
+            if "/" in prefix:
+                container, _, prefix = prefix.partition("/")
+            else:
+                container = prefix
+                prefix = ""
             container = container.strip("/")
 
         if not container:
@@ -186,7 +191,10 @@ class AzureBlobStore(StorageBackend):
         )
         if endpoint:
             endpoint = endpoint.strip().rstrip("/")
-            if account_name and account_name not in endpoint:
+            parsed_endpoint = urllib.parse.urlsplit(endpoint)
+            # If the endpoint does not already specify an account path segment, append it
+            endpoint_path_segments = [p for p in parsed_endpoint.path.split("/") if p]
+            if account_name and account_name not in endpoint_path_segments:
                 account_url = f"{endpoint}/{account_name}"
             else:
                 account_url = endpoint
@@ -553,9 +561,11 @@ def _safe_write_cache_file(target: Path, name: str, data: bytes) -> None:
             raise StorageError(f"cannot safely write {dest}: {exc}") from exc
 
     try:
-        with os.fdopen(file_fd, "wb") as f:
-            f.write(data)
+        fileobj = os.fdopen(file_fd, "wb")
     except Exception:
         with contextlib.suppress(OSError):
             os.close(file_fd)
         raise
+
+    with fileobj:
+        fileobj.write(data)
