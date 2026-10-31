@@ -192,9 +192,14 @@ class AzureBlobStore(StorageBackend):
         if endpoint:
             endpoint = endpoint.strip().rstrip("/")
             parsed_endpoint = urllib.parse.urlsplit(endpoint)
-            # If the endpoint does not already specify an account path segment, append it
+            # If the endpoint does not already specify an account path or host segment, append it
             endpoint_path_segments = [p for p in parsed_endpoint.path.split("/") if p]
-            if account_name and account_name not in endpoint_path_segments:
+            host_segments = [p for p in parsed_endpoint.netloc.split(":")[0].split(".") if p]
+            if (
+                account_name
+                and account_name not in endpoint_path_segments
+                and account_name not in host_segments
+            ):
                 account_url = f"{endpoint}/{account_name}"
             else:
                 account_url = endpoint

@@ -708,6 +708,7 @@ def test_url_with_fqdn_and_sovereign_clouds(monkeypatch):
         urllib.parse.urlsplit(store_gov._container_client.url).netloc
         == "govacc.blob.core.usgovcloudapi.net"
     )
+    assert urllib.parse.urlsplit(store_gov._container_client.url).path == "/govcontainer"
 
     # Missing container in FQDN format
     with pytest.raises(StorageError, match="missing a container name"):
