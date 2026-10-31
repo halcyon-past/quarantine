@@ -669,9 +669,15 @@ def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBacken
 
         register_backend("gs", GCSStore)
 
+    if scheme not in _BACKENDS and scheme in {"azure", "az"}:
+        from .azure_store import AzureBlobStore  # noqa: PLC0415
+
+        register_backend("azure", AzureBlobStore)
+        register_backend("az", AzureBlobStore)
+
     factory = _BACKENDS.get(scheme)
     if factory is None:
-        known = ", ".join(sorted({*(_BACKENDS), "s3", "gs"})) or "s3"
+        known = ", ".join(sorted({*(_BACKENDS), "s3", "gs", "azure", "az"})) or "s3"
         raise StorageError(
             f"no storage backend for {scheme}:// URLs (available: {known}). "
             f"Third-party backends can claim a scheme with quarantine.register_backend()."

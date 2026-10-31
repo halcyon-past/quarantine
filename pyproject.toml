@@ -58,6 +58,7 @@ dev = [
     "hypothesis>=6.100",
     "boto3>=1.35",
     "google-cloud-storage>=2.10",
+    "azure-storage-blob>=12.14",
     "moto[s3,server]>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
@@ -67,7 +68,8 @@ s3 = [
 ]
 all = [
     "boto3>=1.35",
-    "google-cloud-storage>=2.10"
+    "google-cloud-storage>=2.10",
+    "azure-storage-blob>=12.14",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -77,6 +79,9 @@ bench = [
 ]
 gcs = [
     "google-cloud-storage>=2.10",
+]
+azure = [
+    "azure-storage-blob>=12.14",
 ]
 
 [project.urls]
@@ -129,11 +134,16 @@ addopts = [
 ]
 filterwarnings = [
     "error",
+    "ignore::pytest.PytestDeprecationWarning:pytest_asyncio.*",
+    "ignore:The configuration option .asyncio_default_fixture_loop_scope. is unset.*:pytest.PytestDeprecationWarning",
     "ignore:Type google._upb._message:DeprecationWarning",
     "ignore:.*Google will stop supporting.*:FutureWarning:google.api_core.*",
+    "ignore:.*non-supported Python version.*:FutureWarning:google.api_core.*",
+    "ignore::FutureWarning:google.api_core.*",
     "ignore:.*datetime.datetime.utcnow.*:DeprecationWarning:botocore.*",
 ]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
 markers = [
     "regression: end-to-end user-journey regression tests (run with `pytest -m regression`)",
@@ -227,15 +237,32 @@ convention = "pep257"
 [tool.mypy]
 python_version = "3.10"
 files = ["src", "tests"]
+mypy_path = "stubs"
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 [[tool.mypy.overrides]]
-# boto3 is untyped, and moto's typed internals reach numpy stubs that need a
+# boto3 is untyped, and moto/hypothesis reach numpy stubs that need a
 # newer Python than our 3.10 target - do not follow either family of imports.
-module = ["boto3.*", "botocore.*", "moto.*","google.*"]
+module = [
+    "boto3",
+    "boto3.*",
+    "botocore",
+    "botocore.*",
+    "moto",
+    "moto.*",
+    "google",
+    "google.*",
+    "azure",
+    "azure.*",
+    "hypothesis",
+    "hypothesis.*",
+    "numpy",
+    "numpy.*",
+]
 ignore_missing_imports = true
+ignore_errors = true
 follow_imports = "skip"
 
 [[tool.mypy.overrides]]

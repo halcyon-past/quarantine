@@ -1,3 +1,8 @@
+---
+title: Observability, Metrics & Alerting Hooks (Prometheus, Datadog, Sentry) · quarantine-py
+description: Integrate Python dead-letter queue metrics into Prometheus, Datadog, Sentry, and standard logging using lifecycle hooks.
+---
+
 # Observability
 
 [← docs index](index.md)

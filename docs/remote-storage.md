@@ -1,3 +1,8 @@
+---
+title: Remote Cloud Storage Backends (S3, GCS, Azure Blob) · quarantine-py
+description: Pluggable remote storage for Python dead-letter queues. Share one quarantine across Kubernetes, Docker, and Lambda fleets on AWS S3, Google Cloud Storage, or Azure Blob Storage.
+---
+
 # Remote storage
 
 [← docs index](index.md)
@@ -5,8 +10,16 @@
 `.quarantine/` on a local disk is exactly right for a script on your laptop —
 and exactly wrong for Kubernetes, AWS Lambda, Docker, or any fleet of workers
 whose disks evaporate with the container. Remote backends give all of them
-**one shared quarantine**: workers set failures aside in a bucket, and you
-inspect and replay them from your own machine.
+**one shared quarantine**: workers set failures aside in a bucket or container,
+and you inspect and replay them from your own machine.
+
+### Dedicated Cloud Storage Guides
+
+Detailed setup, credentials, least-privilege IAM policies, FAQs, and consistency guarantees are documented for each provider:
+
+- **[AWS S3 Guide](aws-s3.md)** (`s3://bucket/prefix`) — IAM roles, IRSA, ECS tasks, KMS, and LocalStack.
+- **[Google Cloud Storage (GCS) Guide](gcp-gcs.md)** (`gs://bucket/prefix`) — ADC, GKE Workload Identity, CMEK, and fake-gcs-server.
+- **[Azure Blob Storage Guide](azure-blob.md)** (`azure://container/prefix` or `az://`) — Entra ID Managed Identity, connection strings, AKS Workload Identity, RBAC, and Azurite.
 
 ## Using the S3 backend
 
@@ -247,6 +260,114 @@ primitives (the reasoning lives in
 - **There is no `index.json` object.** GCS listings are strongly consistent,
   so the listing *is* the index; nothing can go stale.
 
+## Using the Azure Blob Storage backend
+
+Install the extra (the core package stays zero-dependency):
+
+```bash
+pip install "quarantine-py[azure]"
+```
+
+Then a URL goes anywhere a folder went — the same `dir=`, the same `--dir`,
+the same `$QUARANTINE_DIR`:
+
+```python
+@quarantine(dir="azure://my-container/etl/quarantine")
+def process(item): ...
+```
+
+```bash
+quarantine list  --dir azure://my-container/etl/quarantine
+quarantine show 2 --dir azure://my-container/etl/quarantine
+quarantine retry --dir azure://my-container/etl/quarantine --import job.py
+quarantine ui    --dir azure://my-container/etl/quarantine
+export QUARANTINE_DIR=azure://my-container/etl/quarantine   # or set it once
+```
+
+`az://my-container/prefix` works as an alias too. Every command behaves as it does
+locally, because records *are* what they are locally: per-record objects
+(`0001/meta.json`, `input.pkl`, `traceback.txt`, …) under the prefix, byte-for-byte
+the same files. Reads are cached in a per-URL directory under the system temp
+folder so `show`, `debug`, `retry` and the dashboard work unchanged.
+
+## Azure credentials
+
+The backend supports standard Azure authentication mechanisms:
+
+1. `AZURE_STORAGE_CONNECTION_STRING` environment variable (ideal for connection strings
+   and local development with Azurite),
+2. `AZURE_STORAGE_ACCOUNT_NAME` (or `azure://account@container/prefix`) along with
+   an account key (`AZURE_STORAGE_KEY` or `AZURE_STORAGE_ACCOUNT_KEY`) or SAS token
+   (`AZURE_STORAGE_SAS_TOKEN`),
+3. Azure Active Directory / Entra ID via `DefaultAzureCredential` (when `azure-identity`
+   is installed): AKS Workload Identity, Azure Managed Identity (VM, Container Apps,
+   App Service), or Azure CLI credentials (`az login`).
+
+In a fleet, that usually means: **workers use their Managed Identity or connection string,
+your laptop uses Azure CLI credentials or a dev connection string** — same URL, different
+credentials, no keys in code. `AZURE_STORAGE_EMULATOR_HOST` (or `AZURE_BLOB_ENDPOINT_URL`)
+is honoured too, so a local [Azurite](https://github.com/Azure/Azurite) instance works for
+development and testing without touching a real storage account:
+
+```bash
+docker run -d -p 10000:10000 mcr.microsoft.com/azure-storage/azurite
+```
+
+## Azure RBAC permissions
+
+The backend needs blob data actions scoped to the container. The built-in
+[`Storage Blob Data Contributor`](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#storage-blob-data-contributor)
+role covers exactly this — list, read, write and delete blobs, with no storage-account
+management permissions — for a **worker or operator** (writes records, retries, clears):
+
+```bash
+az role assignment create \
+  --assignee "<managed-identity-principal-id>" \
+  --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<account>/blobServices/default/containers/my-container"
+```
+
+What each permission is for:
+
+| Permission | Used by |
+|---|---|
+| `Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read` | every read: `list`, `stats`, deduplication, downloading records (`show`, `retry`, `debug`, dashboard) |
+| `Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write` | quarantining (including the conditional id claim), retry bookkeeping |
+| `Microsoft.Storage/storageAccounts/blobServices/containers/blobs/delete` | `retry` (recovered records are deleted), `clear`, `reindex` sweeps |
+
+Two useful reductions:
+
+- **Read-only inspection** (a dashboard host, an on-call engineer who may look but
+  not touch): use [`Storage Blob Data Reader`](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#storage-blob-data-reader)
+  instead. `list`, `show`, `stats` and the dashboard's viewing work; quarantining,
+  `retry` and `clear` will fail with an access error, as intended.
+- **Write-only workers** are *not* possible: writers also need list and read
+  permissions, because allocating an id requires seeing which ids exist and
+  deduplication reads existing records.
+
+No container-management permissions are needed — the backend never creates containers
+and works fine on a prefix of a shared container. And since records contain your real
+inputs, treat the container like the data it holds: keep it private, encrypt at rest,
+and remember `redact=` runs **before** upload, so secrets you name never reach Azure at all.
+
+## The guarantees, translated to Azure Blob Storage
+
+The local folder's promises rest on atomic renames and atomic directory creation — neither
+exists on Azure Blob Storage, so they are replaced with Azure's own primitives (the reasoning
+lives in [ADR 0007](adr/0007-object-store-commit-point.md)):
+
+- **A reader never sees a partial record.** `meta.json` is uploaded **last** and is the
+  commit point: a record without it does not exist, whatever else has been uploaded. A crash
+  mid-write leaves invisible debris, and `quarantine reindex --dir azure://…` sweeps it.
+- **Two workers can never claim the same id.** An id is claimed by uploading a zero-byte
+  `.claim` object with `overwrite=False` — Azure's conditional write sending `If-None-Match: *`,
+  which the loser sees as `ResourceExistsError` (409/412) and simply takes the next number.
+- **Deduplication is advisory under concurrency.** Two workers quarantining the same input
+  in the same instant may both store it — a duplicate record, never a lost one. *Never lose
+  a failure* outranks *never store twice*.
+- **There is no `index.json` object.** Azure blob listings are strongly consistent, so the
+  listing *is* the index; nothing can go stale.
+
 ## Writing your own backend
 
 The interface is public and small. Subclass
@@ -272,7 +393,7 @@ From then on `dir="mystore://…"` works everywhere a path does. Whatever the
 transport, keep the two promises: a reader never sees a partial record, and a
 failed write never silently loses one.
 
-Azure Blob, Redis and Databricks Unity Catalog volumes are planned as
+Redis and Databricks Unity Catalog volumes are planned as
 further built-ins — see [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md);
 the interface above is how they will be built, and how you can build one
 sooner.

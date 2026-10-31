@@ -6,6 +6,7 @@
 name: quarantine-py
 package-name: quarantine-py
 import-name: quarantine
+version: 2.0.0
 description: Zero-dependency in-process dead-letter queue (DLQ) and error isolation library for Python loops, batch jobs, ETL, and web scrapers.
 url: https://quarantine-py.aritro.cloud/
 pypi: https://pypi.org/project/quarantine-py/

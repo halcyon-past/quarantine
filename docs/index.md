@@ -25,7 +25,10 @@ to a folder — input, traceback, metadata — and you deal with it later.
 | [CLI reference](cli.md) | You are at a terminal with a folder full of failures. |
 | [API reference](api.md) | You are writing code against it. |
 | [On-disk format](on-disk-format.md) | You want to read, ship or process `.quarantine/` yourself. |
-| [Remote storage](remote-storage.md) | Your workers are ephemeral and the quarantine should live in S3. |
+| [Remote storage](remote-storage.md) | Your workers are ephemeral and the quarantine should live in S3, GCS, or Azure Blob Storage. |
+| [AWS S3 Guide](aws-s3.md) | Dedicated guide for AWS S3: IAM policies, IRSA, ECS, Lambda, and SSE-KMS. |
+| [Google Cloud Storage Guide](gcp-gcs.md) | Dedicated guide for Google Cloud Storage: ADC, GKE Workload Identity, CMEK, and fake-gcs-server. |
+| [Azure Blob Storage Guide](azure-blob.md) | Dedicated guide for Azure Blob Storage: Entra ID Managed Identity, AKS, RBAC, and Azurite. |
 | [Observability](observability.md) | You want failures on a dashboard: Prometheus, Datadog, Sentry, logging. |
 | [Benchmarks](benchmarks.md) | You want to know what the decorator costs before putting it in a hot loop. |
 | [Troubleshooting](troubleshooting.md) | Something surprised you. |
