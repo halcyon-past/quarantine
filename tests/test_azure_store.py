@@ -680,3 +680,154 @@ def test_safe_write_cache_file_non_dir_fd(tmp_path, monkeypatch):
     # Escaping destination is rejected
     with pytest.raises(StorageError):
         _safe_write_cache_file(dest_dir, "../escape.txt", b"data")
+
+
+def test_url_with_fqdn_and_sovereign_clouds(monkeypatch):
+    from quarantine.azure_store import AzureBlobStore
+
+    # Normal azure commercial cloud with FQDN
+    url = "azure://myacc.blob.core.windows.net/mycontainer/myprefix"
+    store = AzureBlobStore(url, container_client=FakeContainerClient())
+    assert store.container_name == "mycontainer"
+    assert store.prefix == "myprefix"
+
+    # Commercial cloud with FQDN and no prefix
+    url_no_prefix = "azure://myacc.blob.core.windows.net/mycontainer"
+    store_no_prefix = AzureBlobStore(url_no_prefix, container_client=FakeContainerClient())
+    assert store_no_prefix.container_name == "mycontainer"
+    assert store_no_prefix.prefix == ""
+
+    # US Gov cloud
+    url_gov = "azure://govacc.blob.core.usgovcloudapi.net/govcontainer/govprefix"
+    monkeypatch.setenv("AZURE_STORAGE_KEY", "govkey")
+    store_gov = AzureBlobStore(url_gov)
+    assert store_gov.container_name == "govcontainer"
+    assert store_gov.prefix == "govprefix"
+    assert "govacc.blob.core.usgovcloudapi.net" in store_gov._container_client.url
+
+    # Missing container in FQDN format
+    with pytest.raises(StorageError, match="missing a container name"):
+        AzureBlobStore("azure://myacc.blob.core.windows.net/")
+
+
+def test_service_request_transport_error(azure_url, monkeypatch):
+    from azure.core.exceptions import ServiceRequestError
+
+    store = AzureBlobStore(azure_url)
+
+    # 1. Transport error during list_blobs
+    monkeypatch.setattr(
+        store._container_client,
+        "list_blobs",
+        lambda *a, **k: (_ for _ in ()).throw(ServiceRequestError("DNS resolution failed")),
+    )
+    with pytest.raises(StorageError, match="cannot list records"):
+        store._list_objects()
+
+    # 2. Transport error during download
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        store._container_client,
+        "get_blob_client",
+        lambda *a, **k: mock_blob_client_with_error(ServiceRequestError("Connection reset")),
+    )
+    with pytest.raises(StorageError, match="cannot download record"):
+        store._materialise(1, ["input.pickle"])
+
+    # 3. Transport error during delete
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        store._container_client,
+        "delete_blob",
+        lambda *a, **k: (_ for _ in ()).throw(ServiceRequestError("Socket timeout")),
+    )
+    with pytest.raises(StorageError, match="cannot delete records"):
+        store._delete_keys(["blob1"])
+
+
+def mock_blob_client_with_error(exc):
+    class FailingBlobClient:
+        def download_blob(self):
+            raise exc
+
+    return FailingBlobClient()
+
+
+def test_credentials_whitespace_stripping(monkeypatch):
+    from quarantine.azure_store import AzureBlobStore
+
+    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_NAME", "  testaccount  \n")
+    monkeypatch.setenv("AZURE_STORAGE_KEY", "  secretkey==  \n")
+    store = AzureBlobStore("azure://testcontainer/prefix")
+    assert "testaccount.blob.core.windows.net" in store._container_client.url
+
+
+def test_emulator_without_account_in_endpoint(monkeypatch):
+    from quarantine.azure_store import AzureBlobStore
+
+    monkeypatch.delenv("AZURE_STORAGE_CONNECTION_STRING", raising=False)
+    monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_NAME", "devstoreaccount1")
+    monkeypatch.setenv("AZURE_STORAGE_EMULATOR_HOST", "http://127.0.0.1:10000")
+    store = AzureBlobStore("azure://mycontainer/prefix")
+    assert store._container_client.url == "http://127.0.0.1:10000/devstoreaccount1/mycontainer"
+
+
+def test_rebuild_index_and_update_without_path(azure_url, module):
+    q = Quarantine(azure_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+    store = AzureBlobStore(azure_url)
+    rows = store.rebuild_index()
+    assert len(rows) == 1
+    assert rows[0]["id"] == 1
+    assert rows[0]["error_type"] == "ValueError"
+
+    # Test update when record.path is None
+    record = store.get(1)
+    record.path = None
+    store.update(record)
+    assert record.path is not None
+
+
+def test_write_cache_filters_unsafe_and_symlink(azure_url, tmp_path):
+    store = AzureBlobStore(azure_url)
+    target = store._safe_target_dir(1)
+    sym = target / "sym.txt"
+    real = tmp_path / "real.txt"
+    real.write_bytes(b"data")
+    try:
+        sym.symlink_to(real)
+        with pytest.raises(StorageError, match="cannot be a symlink"):
+            store._write_cache(1, {"sym.txt": b"123"})
+    except (OSError, NotImplementedError):
+        pass
+
+    # Unsafe name is skipped
+    cached = store._write_cache(1, {"../unsafe.txt": b"123", "safe.txt": b"456"})
+    assert not (cached / "../unsafe.txt").exists()
+    assert (cached / "safe.txt").read_bytes() == b"456"
+
+
+def test_claim_id_azure_error(azure_url, monkeypatch):
+    from azure.core.exceptions import AzureError
+
+    store = AzureBlobStore(azure_url)
+    monkeypatch.setattr(
+        store,
+        "_put",
+        lambda *a, **k: (_ for _ in ()).throw(AzureError("network timeout")),
+    )
+    with pytest.raises(StorageError, match="cannot claim a record id"):
+        store._claim_id()
+
+
+def test_delete_keys_resource_not_found(azure_url, monkeypatch):
+    from azure.core.exceptions import ResourceNotFoundError
+
+    store = AzureBlobStore(azure_url)
+    monkeypatch.setattr(
+        store._container_client,
+        "delete_blob",
+        lambda *a, **k: (_ for _ in ()).throw(ResourceNotFoundError("Blob does not exist")),
+    )
+    # Should not raise
+    store._delete_keys(["non_existent_key"])

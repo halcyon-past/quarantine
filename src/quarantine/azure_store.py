@@ -31,6 +31,7 @@ are documented in ``docs/remote-storage.md``.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -75,9 +76,11 @@ def _import_azure() -> tuple[
     type[Exception],
     type[Exception],
     type[Exception],
+    type[Exception],
 ]:
     try:
         from azure.core.exceptions import (  # noqa: PLC0415
+            AzureError,
             HttpResponseError,
             ResourceExistsError,
             ResourceNotFoundError,
@@ -88,7 +91,7 @@ def _import_azure() -> tuple[
             "the azure:// backend needs azure-storage-blob, which is an optional extra: "
             'pip install "quarantine-py[azure]"'
         ) from exc
-    return blob, ResourceExistsError, ResourceNotFoundError, HttpResponseError
+    return blob, ResourceExistsError, ResourceNotFoundError, HttpResponseError, AzureError
 
 
 class AzureBlobStore(StorageBackend):
@@ -103,15 +106,24 @@ class AzureBlobStore(StorageBackend):
 
         # Support optional account in URL: azure://account@container/prefix
         account: str | None = None
+        custom_endpoint: str | None = None
         if "@" in rest:
             account, _, rest = rest.partition("@")
 
         container, _, prefix = rest.partition("/")
         container = container.strip("/")
+
+        # Support azure://account.blob.core.<domain>/container/prefix
+        if ".blob.core." in container:
+            custom_endpoint = f"https://{container}"
+            account, _, _ = container.partition(".")
+            container, _, prefix = prefix.partition("/")
+            container = container.strip("/")
+
         if not container:
             raise StorageError(f"{url!r} is missing a container name (azure://container/prefix)")
 
-        blob_mod, resource_exists, resource_not_found, http_error = _import_azure()
+        blob_mod, resource_exists, resource_not_found, http_error, azure_error = _import_azure()
         self.dir: str = url.rstrip("/")
         self.container_name = container
         self.prefix = prefix.strip("/")
@@ -119,11 +131,14 @@ class AzureBlobStore(StorageBackend):
         self._resource_exists = resource_exists
         self._resource_not_found = resource_not_found
         self._http_error = http_error
+        self._azure_error = azure_error
 
         if container_client is not None:
             self._container_client = container_client
         else:
-            self._container_client = self._init_container_client(blob_mod, container, account, url)
+            self._container_client = self._init_container_client(
+                blob_mod, container, account, url, custom_endpoint=custom_endpoint
+            )
 
         self._mutex = threading.Lock()
         self._id_hint = 0
@@ -136,12 +151,14 @@ class AzureBlobStore(StorageBackend):
         container: str,
         account: str | None,
         url: str,
+        *,
+        custom_endpoint: str | None = None,
     ) -> Any:
         conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
         if conn_str:
             try:
                 return blob_mod.ContainerClient.from_connection_string(
-                    conn_str, container_name=container
+                    conn_str.strip(), container_name=container
                 )
             except Exception as exc:
                 raise StorageError(
@@ -153,6 +170,8 @@ class AzureBlobStore(StorageBackend):
             or os.environ.get("AZURE_STORAGE_ACCOUNT_NAME")
             or os.environ.get("AZURE_STORAGE_ACCOUNT")
         )
+        if account_name:
+            account_name = account_name.strip()
         if not account_name:
             raise StorageError(
                 f"cannot determine Azure Storage account for {url}: set "
@@ -160,19 +179,26 @@ class AzureBlobStore(StorageBackend):
                 "or specify the account in the URL (azure://account@container/prefix)."
             )
 
-        endpoint = os.environ.get("AZURE_STORAGE_EMULATOR_HOST") or os.environ.get(
-            "AZURE_BLOB_ENDPOINT_URL"
+        endpoint = (
+            os.environ.get("AZURE_STORAGE_EMULATOR_HOST")
+            or os.environ.get("AZURE_BLOB_ENDPOINT_URL")
+            or custom_endpoint
         )
         if endpoint:
-            account_url = endpoint.rstrip("/")
+            endpoint = endpoint.strip().rstrip("/")
+            if account_name and account_name not in endpoint:
+                account_url = f"{endpoint}/{account_name}"
+            else:
+                account_url = endpoint
         else:
             account_url = f"https://{account_name}.blob.core.windows.net"
 
-        credential: Any = (
+        raw_cred = (
             os.environ.get("AZURE_STORAGE_KEY")
             or os.environ.get("AZURE_STORAGE_ACCOUNT_KEY")
             or os.environ.get("AZURE_STORAGE_SAS_TOKEN")
         )
+        credential: Any = raw_cred.strip() if raw_cred else None
 
         if not credential:
             try:
@@ -180,6 +206,8 @@ class AzureBlobStore(StorageBackend):
 
                 credential = DefaultAzureCredential()
             except ImportError:
+                credential = None
+            except self._azure_error:
                 credential = None
 
         try:
@@ -220,7 +248,7 @@ class AzureBlobStore(StorageBackend):
                 dirname, _, filename = tail.partition("/")
                 if dirname.isdigit() and filename:
                     out.setdefault(int(dirname), {})[filename] = blob.size or 0
-        except self._http_error as exc:
+        except self._azure_error as exc:
             raise self._wrap("list records", exc) from exc
         return out
 
@@ -276,7 +304,7 @@ class AzureBlobStore(StorageBackend):
             try:
                 blob_client = self._container_client.get_blob_client(self._key(record_id, name))
                 data = blob_client.download_blob().readall()
-            except self._http_error as exc:
+            except self._azure_error as exc:
                 raise self._wrap(f"download record {record_id}", exc) from exc
             _safe_write_cache_file(target, name, data)
         return target
@@ -323,6 +351,8 @@ class AzureBlobStore(StorageBackend):
                     candidate += 1
                     continue
                 raise self._wrap("claim a record id", exc) from exc
+            except self._azure_error as exc:
+                raise self._wrap("claim a record id", exc) from exc
             else:
                 self._id_hint = candidate
                 return candidate
@@ -359,7 +389,7 @@ class AzureBlobStore(StorageBackend):
             for name, data in files.items():
                 self._put(self._key(record.id, name), data)
             self._put(self._key(record.id, META_NAME), _encode_meta(record))
-        except self._http_error as io_error:
+        except self._azure_error as io_error:
             # The claim (and any partial uploads) stay behind, invisible to
             # readers; `quarantine reindex` sweeps them.
             raise self._wrap("write a record", io_error) from io_error
@@ -384,7 +414,7 @@ class AzureBlobStore(StorageBackend):
         """Rewrite ``meta.json`` for an existing record."""
         try:
             self._put(self._key(record.id, META_NAME), _encode_meta(record))
-        except self._http_error as exc:
+        except self._azure_error as exc:
             raise self._wrap(f"update record {record.id}", exc) from exc
         cached = self._write_cache(record.id, {META_NAME: _encode_meta(record)})
         if record.path is None:
@@ -397,7 +427,7 @@ class AzureBlobStore(StorageBackend):
         text = "".join(tb.format_exception(type(exc), exc, exc.__traceback__)).encode("utf-8")
         try:
             self._put(self._key(record.id, TRACEBACK_NAME), text)
-        except self._http_error as io_error:
+        except self._azure_error as io_error:
             raise self._wrap(f"update record {record.id}", io_error) from io_error
         self._write_cache(record.id, {TRACEBACK_NAME: text})
 
@@ -413,6 +443,8 @@ class AzureBlobStore(StorageBackend):
             except self._http_error as exc:
                 if getattr(exc, "status_code", None) == _NOT_FOUND_STATUS_CODE:
                     continue
+                raise self._wrap("delete records", exc) from exc
+            except self._azure_error as exc:
                 raise self._wrap("delete records", exc) from exc
 
     def delete(self, record: Record | int) -> None:
@@ -520,5 +552,10 @@ def _safe_write_cache_file(target: Path, name: str, data: bytes) -> None:
         except OSError as exc:
             raise StorageError(f"cannot safely write {dest}: {exc}") from exc
 
-    with os.fdopen(file_fd, "wb") as f:
-        f.write(data)
+    try:
+        with os.fdopen(file_fd, "wb") as f:
+            f.write(data)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.close(file_fd)
+        raise
