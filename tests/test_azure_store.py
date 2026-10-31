@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import urllib.parse
 import uuid
 
 import pytest
@@ -475,7 +476,7 @@ def test_client_init_with_url_account_and_emulator(monkeypatch):
     monkeypatch.setenv("AZURE_STORAGE_SAS_TOKEN", "?sv=2020-08-04&ss=b&srt=sco&sp=rwdlacx")
     store = AzureBlobStore("azure://myaccount@mycontainer/prefix")
     assert store.container_name == "mycontainer"
-    assert "127.0.0.1:10000" in store._container_client.url
+    assert urllib.parse.urlsplit(store._container_client.url).netloc == "127.0.0.1:10000"
 
 
 def test_unreadable_records_appended_to_problems(azure_url, module):
@@ -703,7 +704,10 @@ def test_url_with_fqdn_and_sovereign_clouds(monkeypatch):
     store_gov = AzureBlobStore(url_gov)
     assert store_gov.container_name == "govcontainer"
     assert store_gov.prefix == "govprefix"
-    assert "govacc.blob.core.usgovcloudapi.net" in store_gov._container_client.url
+    assert (
+        urllib.parse.urlsplit(store_gov._container_client.url).netloc
+        == "govacc.blob.core.usgovcloudapi.net"
+    )
 
     # Missing container in FQDN format
     with pytest.raises(StorageError, match="missing a container name"):
@@ -759,7 +763,10 @@ def test_credentials_whitespace_stripping(monkeypatch):
     monkeypatch.setenv("AZURE_STORAGE_ACCOUNT_NAME", "  testaccount  \n")
     monkeypatch.setenv("AZURE_STORAGE_KEY", "  secretkey==  \n")
     store = AzureBlobStore("azure://testcontainer/prefix")
-    assert "testaccount.blob.core.windows.net" in store._container_client.url
+    assert (
+        urllib.parse.urlsplit(store._container_client.url).netloc
+        == "testaccount.blob.core.windows.net"
+    )
 
 
 def test_emulator_without_account_in_endpoint(monkeypatch):

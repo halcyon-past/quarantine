@@ -134,11 +134,14 @@ addopts = [
 ]
 filterwarnings = [
     "error",
+    "ignore::pytest.PytestDeprecationWarning:pytest_asyncio.*",
+    "ignore:The configuration option .asyncio_default_fixture_loop_scope. is unset.*:pytest.PytestDeprecationWarning",
     "ignore:Type google._upb._message:DeprecationWarning",
     "ignore:.*Google will stop supporting.*:FutureWarning:google.api_core.*",
     "ignore:.*datetime.datetime.utcnow.*:DeprecationWarning:botocore.*",
 ]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
 markers = [
     "regression: end-to-end user-journey regression tests (run with `pytest -m regression`)",
