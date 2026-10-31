@@ -1,3 +1,8 @@
+---
+title: Troubleshooting & Debugging Guide · quarantine-py
+description: Troubleshooting guide for quarantine-py: skipped items, __main__ imports during retry, concurrency edge cases, and pdb debugging.
+---
+
 # Troubleshooting
 
 [← docs index](index.md)

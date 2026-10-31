@@ -1,7 +1,14 @@
-# quarantine — documentation
+---
+title: quarantine-py · Zero-Dependency Dead-Letter Queue & Loop Resilience for Python
+description: Prevent Python batch loops, ETL pipelines, and web scrapers from crashing on bad data. Isolate failures, keep loops running, and replay errors surgically. Developed by Aritro Saha.
+---
+
+# quarantine-py — documentation
 
 [← back to the README](https://github.com/halcyon-past/quarantine#readme) ·
 [package on PyPI](https://pypi.org/project/quarantine-py/) ·
+[architecture case study](https://www.aritro.cloud/projects/quarantine) ·
+[author portfolio](https://www.aritro.cloud/) ·
 [latest releases](https://github.com/halcyon-past/quarantine/releases)
 
 `quarantine` keeps a loop running when one item goes bad: the failure is written
@@ -69,3 +76,13 @@ quarantine retry        # re-run only the failures
    everything. See [the circuit breaker](usage.md#the-circuit-breaker).
 5. **Secrets are scrubbed before the write, not after.** See
    [redacting secrets](usage.md#redacting-secrets).
+
+---
+
+## Author & Engineering Case Study
+
+`quarantine-py` is created and maintained by **[Aritro Saha](https://www.aritro.cloud)** (Software Engineer at Bristol Myers Squibb).
+
+- Read the in-depth **[Quarantine Project Case Study](https://www.aritro.cloud/projects/quarantine)** on Aritro's engineering portfolio.
+- Read the technical architecture breakdown: **[Architecting an In-Process Dead-Letter Queue (DLQ) in Python](https://www.aritro.cloud/blog/python-dead-letter-queue-batch-pipelines)**.
+- Connect via [GitHub (@halcyon-past)](https://github.com/halcyon-past) or [LinkedIn](https://linkedin.com/in/aritro-saha).

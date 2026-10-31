@@ -1,3 +1,8 @@
+---
+title: Complete Usage Guide & API Decorators · quarantine-py
+description: How to use @quarantine, shield(), ashield(), circuit breakers, secret redaction, transient retries, and in-process replay in Python.
+---
+
 # Usage guide
 
 [← docs index](index.md)

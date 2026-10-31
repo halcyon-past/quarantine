@@ -9,14 +9,27 @@ description = "When one bad item crashes your loop of 10,000 - don't crash. Set 
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-authors = [{ name = "quarantine contributors" }]
+authors = [
+    { name = "Aritro Saha", email = "aritrosaha2025@gmail.com" },
+    { name = "quarantine contributors" },
+]
+maintainers = [
+    { name = "Aritro Saha", email = "aritrosaha2025@gmail.com" },
+]
 keywords = [
     "error-handling",
     "dead-letter-queue",
     "retry",
     "resilience",
     "batch",
+    "batch-processing",
     "etl",
+    "data-pipeline",
+    "fault-tolerance",
+    "pandas",
+    "poison-pill",
+    "exception-handling",
+    "circuit-breaker",
     "debugging",
 ]
 classifiers = [
@@ -69,6 +82,9 @@ gcs = [
 [project.urls]
 Homepage = "https://quarantine-py.aritro.cloud"
 Documentation = "https://quarantine-py.aritro.cloud"
+"Author Portfolio" = "https://www.aritro.cloud"
+"Architecture Case Study" = "https://www.aritro.cloud/projects/quarantine"
+"Engineering Article" = "https://www.aritro.cloud/blog/python-dead-letter-queue-batch-pipelines"
 Source = "https://github.com/halcyon-past/quarantine"
 Issues = "https://github.com/halcyon-past/quarantine/issues"
 Changelog = "https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md"

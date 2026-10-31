@@ -1,5 +1,6 @@
-site_name: quarantine
-site_description: "When one bad item crashes your loop of 10,000 - don't crash. Set it aside, keep going, fix it later."
+site_name: quarantine-py
+site_description: "Zero-dependency dead-letter queue (DLQ) and loop resilience library for Python. Set bad items aside, keep going, fix them later. By Aritro Saha."
+site_author: Aritro Saha
 site_url: https://quarantine-py.aritro.cloud/
 repo_url: https://github.com/halcyon-past/quarantine
 repo_name: halcyon-past/quarantine
@@ -7,6 +8,7 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: overrides
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -34,6 +36,12 @@ extra:
     - icon: simple/github
       link: https://github.com/halcyon-past/quarantine
       name: quarantine on GitHub
+    - icon: material/web
+      link: https://www.aritro.cloud/projects/quarantine
+      name: Architecture Case Study by Aritro Saha
+    - icon: simple/linkedin
+      link: https://linkedin.com/in/aritro-saha
+      name: Aritro Saha on LinkedIn
 
 markdown_extensions:
   - admonition

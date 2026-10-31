@@ -1,3 +1,8 @@
+---
+title: Pandas, Scraper, Airflow & FastAPI Error Isolation Recipes
+description: Step-by-step recipes to quarantine bad records in Pandas ETL jobs, async web scrapers, Airflow tasks, and FastAPI workers without crashing loops.
+---
+
 # Framework recipes
 
 [← docs index](index.md)
