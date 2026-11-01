@@ -252,8 +252,13 @@ def test_lock_release_preserves_stolen_lock(tmp_path):
     lock_a.acquire()
     assert path.exists()
 
-    # Process B breaks lock A and replaces it with a new file
-    path.unlink()
+    # Process B breaks lock A and replaces it with a new file.
+    # On Windows, open file descriptors cannot be unlinked while held open by a live process.
+    try:
+        path.unlink()
+    except OSError:
+        pytest.skip("Operating system prohibits unlinking open file descriptors")
+
     lock_b = FileLock(path, timeout=0.1)
     lock_b.acquire()
     assert path.exists()
