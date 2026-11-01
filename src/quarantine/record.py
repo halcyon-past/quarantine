@@ -76,6 +76,11 @@ class Record:
         if missing:
             raise StorageError(f"{path or 'record'}: meta.json is missing {sorted(missing)}")
         kwargs = {k: v for k, v in data.items() if k in known}
+        try:
+            kwargs["id"] = int(kwargs["id"])
+        except (ValueError, TypeError) as exc:
+            msg = f"{path or 'record'}: invalid record id: {data.get('id')!r}"
+            raise StorageError(msg) from exc
         kwargs.setdefault("module", "")
         kwargs.setdefault("fingerprint", "")
         kwargs.setdefault("source_file", "")
@@ -144,7 +149,7 @@ class Record:
         """The stored traceback, or a placeholder if it went missing."""
         path = self._require_path() / TRACEBACK_NAME
         try:
-            return path.read_text(encoding="utf-8")
+            return path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return "(no traceback stored)\n"
 
@@ -152,7 +157,7 @@ class Record:
         """The human-readable input rendering."""
         path = self._require_path() / INPUT_TEXT_NAME
         try:
-            return path.read_text(encoding="utf-8")
+            return path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return "(no input preview stored)\n"
 

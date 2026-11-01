@@ -1582,4 +1582,5 @@ quarantine ui --port 9090
 
 ### Options
 
+* `--host HOST`: The host interface to bind the local HTTP server to (defaults to `127.0.0.1`).
 * `--port PORT`: The port to bind the local HTTP server to (defaults to `8080`).

@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Security
+- **Local dashboard host binding & CSRF protection**: `quarantine ui` now binds to `127.0.0.1` by default rather than all network interfaces (`0.0.0.0`), with an explicit `--host` option added for remote bindings. The HTTP server now runs on `ThreadingHTTPServer` and validates `Host`, `Origin`, and `Referer` headers on all POST requests to prevent DNS rebinding and cross-site request forgery attacks.
+- **Local storage symlink traversal hardening**: `Store.record_dirs()` and `Store.purge_temp()` now explicitly enforce `follow_symlinks=False` and `not entry.is_symlink()`, preventing path traversal and accidental recursive deletion across directory symlinks.
+- **Remote cache file descriptor leak prevention**: wrapped `_safe_write_cache_file()` in `S3Store`, `GCSStore`, and `AzureStore` to ensure file descriptors are safely closed if `os.fdopen()` fails.
+
+### Fixed
+- **`FileLock` timeout hang on stale lock deletion**: wrapped lock unlinking in `FileLock._break_if_stale()` with `try/except OSError`, returning `False` so `acquire()` respects the deadline timeout rather than busy looping infinitely on permission denial.
+- **`FileLock.release()` lock-stealing race**: added inode comparison (`fd_stat.st_ino == path_stat.st_ino`) before unlinking so a lockfile re-created or stolen by another process is not deleted on release.
+- **Permanent daemon wedging on capacity limits**: `Quarantine._check_capacity()` now re-syncs the cached record count with disk (`self.store.count()`) whenever `self._count >= limit`, allowing long-running background workers to resume quarantining immediately when records are cleared externally.
+- **`quarantine debug` with `async def` coroutines**: `cli._post_mortem()` now checks whether the target outcome is an awaitable coroutine and executes it via `asyncio.run()`, ensuring the debugger drops into the failing frame rather than exiting prematurely with a false-positive success message.
+- **Public API parity for `api.aretry`**: added `import_from: str | Path | None = None` to top-level `aretry()`, restoring full parity with `Quarantine.aretry()` and sync `quarantine.retry()`.
+- **Store index cache error resilience**: `Store.add()` now catches `StorageError` on `_index_upsert()` and emits a warning via `reporting.warn()`, preserving the invariant that `index.json` is a rebuildable cache and never aborts a successful failure record write.
+- **Corrupted record encoding tolerance**: `Record.traceback_text()` and `Record.input_text()` now read text with `errors="replace"`, preventing `UnicodeDecodeError` crashes on non-UTF-8 bytes.
+- **Record ID coercion**: `Record.from_meta()` now coerces string IDs into integers with clear `StorageError` validation, preventing format string crashes.
+- **Documentation site build failure**: fixed Jinja2 null-safety in `overrides/main.html` for 404/error templates and updated invalid icon `simple/linkedin` to `fontawesome/brands/linkedin` in `mkdocs.yml`.
+- **Pytest-asyncio deprecation warning**: added `asyncio_default_fixture_loop_scope = "function"` to `pyproject.toml` to prevent strict CI test failures.
+
+### Performance
+- **Targeted `retry(ids=...)` optimization**: `Quarantine._retry_plan()` now executes targeted $O(k)$ lookups via `self.store.get(id)` when specific record IDs are requested, avoiding full $O(N)$ store scans across disk and remote S3/GCS buckets.
+
 ## [2.0.0] - 2026-11-01
 
 ### Added

@@ -302,9 +302,16 @@ async def aretry(
     function: str | None = None,
     dir: str | Path | None = None,  # noqa: A002
     dry_run: bool = False,
+    import_from: str | Path | None = None,
 ) -> RetryResult:
     """Awaitable :func:`retry`, for records from ``async def`` functions."""
-    return await get_quarantine(dir).aretry(ids, using=using, function=function, dry_run=dry_run)
+    return await get_quarantine(dir).aretry(
+        ids,
+        using=using,
+        function=function,
+        dry_run=dry_run,
+        import_from=import_from,
+    )
 
 
 def clear(*, dir: str | Path | None = None) -> int:  # noqa: A002

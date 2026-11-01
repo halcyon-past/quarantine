@@ -108,7 +108,7 @@ to several folders.
 | `acall(fn, *args, **kwargs)` | Awaitable form of `call`. |
 | `records(function=None)` | `list[Record]`, oldest first, optionally filtered by function name. |
 | `retry(ids=None, *, using=None, function=None, dry_run=False, import_from=None)` | Re-run records; returns `RetryResult`. |
-| `aretry(...)` | Awaitable `retry`, for `async def` records. |
+| `aretry(ids=None, *, using=None, function=None, dry_run=False, import_from=None)` | Awaitable `retry`, for `async def` records. |
 | `clear()` | Delete every record; returns how many. |
 | `summary_line()` | The end-of-run line, or `None` when there is nothing to report. |
 | `replace(**changes)` | A new instance with some settings changed. |
@@ -130,7 +130,7 @@ These act on the default folder, or on `dir=` if you pass one.
 |---|---|
 | `records(function=None, *, dir=None)` | Everything currently quarantined. |
 | `retry(ids=None, *, using=None, function=None, dir=None, dry_run=False, import_from=None)` | Re-run records. |
-| `aretry(...)` | Awaitable `retry`. |
+| `aretry(ids=None, *, using=None, function=None, dir=None, dry_run=False, import_from=None)` | Awaitable `retry`. |
 | `clear(*, dir=None)` | Empty the folder. |
 | `summary(*, dir=None)` | The summary line, or `None`. |
 | `get_quarantine(dir=None, **options)` | The shared instance for those options. |

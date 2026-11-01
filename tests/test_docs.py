@@ -48,7 +48,7 @@ def test_doc_pages_exist_and_are_substantial(name):
         parts = body.split("---", 2)
         if len(parts) >= 3:
             body = parts[2].lstrip()
-    assert body.startswith("# "), "every page starts with a title"
+    assert body.startswith("# "), f"{name} does not start with a markdown title"
     assert len(text.splitlines()) > 30, "a stub is not documentation"
 
 

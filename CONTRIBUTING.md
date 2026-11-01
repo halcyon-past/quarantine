@@ -79,6 +79,10 @@ To maintain stability across environments, we enforce strict repository rules an
 5. **Mandatory Tests**: All CI jobs (tests, linting, building) must pass completely before a PR can be merged.
 6. **Mandatory Reviews**: At least 1 approving review from the Code Owner (`@halcyon-past`) is required to merge a PR.
 
+## Code of Conduct
+
+All contributors and participants are expected to adhere to our [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Ground rules for changes
 
 - **Never lose a failure.** Any code path that catches an exception must either

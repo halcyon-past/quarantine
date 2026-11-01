@@ -1,0 +1,65 @@
+name: 🐛 Bug Report
+description: Report a bug, crash, or unexpected behavior in quarantine-py.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+        Please ensure you are using a supported Python version (3.10+) and search existing issues before opening a new one.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what went wrong.
+      placeholder: What happened? What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproducible Example
+      description: |
+        Please provide a self-contained code snippet that reproduces the issue.
+      placeholder: |
+        from quarantine import quarantine
+
+        @quarantine
+        def process(item):
+            raise ValueError("bad item")
+
+        process("test")
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Traceback / Output
+      description: Paste the full traceback or terminal output if an exception was raised.
+      render: shell
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Storage Backend
+      description: Which storage backend was in use when the bug occurred?
+      options:
+        - Local directory (default .quarantine/)
+        - AWS S3 (s3://...)
+        - Google Cloud Storage (gs://...)
+        - Custom registered backend
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS version, Python version, and quarantine-py version.
+      placeholder: macOS 14.5 / Python 3.12.2 / quarantine-py 1.2.0
+    validations:
+      required: true

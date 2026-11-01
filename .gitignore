@@ -29,3 +29,8 @@ htmlcov/
 .idea/
 .vscode/
 .DS_Store
+
+# Local media / scratch assets
+trailer/
+trailer_reels/
+uv.lock
