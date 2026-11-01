@@ -1,0 +1,42 @@
+name: ✨ Feature Request
+description: Propose a new feature, improvement, or storage backend for quarantine-py.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting a feature request, please check [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/dev/ENHANCEMENTS.md) to see if it is already planned, and note that `quarantine-py` intentionally maintains **zero runtime dependencies** for its core package.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear and concise description of the problem or limitation you are experiencing.
+      placeholder: I am always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you would like to see, including API design if applicable.
+      placeholder: How would the API look and behave?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you have considered.
+
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Core Design Invariants
+      options:
+        - label: I understand that quarantine-py maintains zero core runtime dependencies.
+          required: true
+        - label: This proposal does not compromise failure durability ("never lose a failure").
+          required: true

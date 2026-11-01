@@ -214,6 +214,28 @@ def test_debug_drops_into_post_mortem(populated, monkeypatch, capsys):
     assert "re-running the failing call" in capsys.readouterr().out
 
 
+def test_debug_drops_into_post_mortem_for_async_target(qdir, target_module, monkeypatch, capsys):
+    import asyncio
+    import pdb
+
+    mod = target_module(
+        """
+        async def async_job(x):
+            if x < 0:
+                raise ValueError("negative number")
+            return x * 2
+        """
+    )
+    instance = Quarantine(qdir, halt_after=None, report=False)
+    asyncio.run(instance.acall(mod.async_job, -5))
+
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(pdb, "post_mortem", lambda tb: seen.setdefault("tb", tb))
+    assert run("debug", "1") == EXIT_OK
+    assert seen.get("tb") is not None
+    assert "re-running the failing call" in capsys.readouterr().out
+
+
 def test_debug_says_so_when_it_no_longer_fails(populated, module, monkeypatch, capsys):
     import pdb
 
@@ -408,18 +430,21 @@ def test_ui_command(monkeypatch, capsys):
 
     called_with_port = None
     called_with_dir = None
+    called_with_host = None
 
-    def mock_start_server(port, d):
-        nonlocal called_with_port, called_with_dir
+    def mock_start_server(port, d, host="127.0.0.1"):
+        nonlocal called_with_port, called_with_dir, called_with_host
         called_with_port = port
         called_with_dir = d
+        called_with_host = host
         return 0
 
     from quarantine import cli
 
     monkeypatch.setattr(cli, "start_server", mock_start_server)
 
-    code = main(["ui", "--port", "9090", "--dir", "custom-dir"])
+    code = main(["ui", "--port", "9090", "--dir", "custom-dir", "--host", "127.0.0.1"])
     assert code == 0
     assert called_with_port == 9090
     assert str(called_with_dir) == "custom-dir"
+    assert called_with_host == "127.0.0.1"

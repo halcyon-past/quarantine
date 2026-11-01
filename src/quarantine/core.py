@@ -431,10 +431,22 @@ class Quarantine:
     ) -> list[tuple[Record, Callable[..., Any], Call]]:
         """Work out what can be retried, recording why anything cannot be."""
         wanted = set(ids) if ids is not None else None
-        candidates = self.records(function)
+        candidates: list[Record] = []
         if wanted is not None:
-            for missing in sorted(wanted - {r.id for r in candidates}):
-                result.unretryable.append((missing, f"no record {missing} in {self.dir}"))
+            for target_id in sorted(wanted):
+                try:
+                    record = self.store.get(target_id)
+                except StorageError:
+                    result.unretryable.append((target_id, f"no record {target_id} in {self.dir}"))
+                    continue
+                if function is not None and function not in (
+                    record.function,
+                    record.qualified_name,
+                ):
+                    continue
+                candidates.append(record)
+        else:
+            candidates = self.records(function)
         plan = []
         for record in candidates:
             if wanted is not None and record.id not in wanted:
@@ -604,7 +616,7 @@ class Quarantine:
         if limit is None:
             return
         with self._mutex:
-            if self._count is None:
+            if self._count is None or self._count >= limit:
                 self._count = self.store.count()
             full = self._count >= limit
         if full:

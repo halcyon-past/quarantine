@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from quarantine.errors import StorageError
-from quarantine.record import Record
+from quarantine.record import INPUT_TEXT_NAME, TRACEBACK_NAME, Record
 from quarantine.serialize import Call, serialize
 from quarantine.store import LOCK_NAME, TMP_PREFIX, FileLock, Store, default_dir
 
@@ -230,6 +230,42 @@ def test_lock_is_exclusive_and_breaks_when_stale(tmp_path):
         pass
 
 
+def test_lock_times_out_when_stale_lock_unlink_fails(tmp_path, monkeypatch):
+    """If unlinking an expired lock fails (permissions, handles), it must time out, not hang."""
+    path = tmp_path / LOCK_NAME
+    path.write_text("999999\n", encoding="utf-8")
+    os.utime(path, (0, 0))  # ancient lock
+
+    def fake_unlink(self_path):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "unlink", fake_unlink)
+    lock = FileLock(path, timeout=0.05, stale_after=1)
+    with pytest.raises(StorageError, match="timed out"):
+        lock.acquire()
+
+
+def test_lock_release_preserves_stolen_lock(tmp_path):
+    """If another process broke our lock and created its own, our release must not delete theirs."""
+    path = tmp_path / LOCK_NAME
+    lock_a = FileLock(path, timeout=0.1)
+    lock_a.acquire()
+    assert path.exists()
+
+    # Process B breaks lock A and replaces it with a new file
+    path.unlink()
+    lock_b = FileLock(path, timeout=0.1)
+    lock_b.acquire()
+    assert path.exists()
+
+    # Process A releases: it must detect the inode mismatch and leave lock B alone
+    lock_a.release()
+    assert path.exists(), "Process A must not delete Process B's lockfile"
+
+    lock_b.release()
+    assert not path.exists()
+
+
 def test_record_without_a_path_refuses_to_read_files():
     record = Record(
         id=1,
@@ -322,3 +358,86 @@ def test_a_permanent_lock_is_reported_not_ignored(tmp_path, monkeypatch):
     with pytest.raises(StorageError, match="cannot write a record"):
         add(store)
     assert store.record_dirs() == []
+
+
+def test_store_add_continues_when_index_lock_fails(tmp_path, monkeypatch, capsys):
+    """If index update fails, the record is still saved and a warning is emitted."""
+    store = Store(tmp_path / "qq")
+
+    def failing_upsert(self, record):
+        raise StorageError("simulated lock failure")
+
+    monkeypatch.setattr(Store, "_index_upsert", failing_upsert)
+    record = add(store)
+
+    assert record.id == 1
+    assert store.get(1).error == "boom"
+    captured = capsys.readouterr()
+    assert "could not update index cache" in captured.err
+
+
+def test_record_dirs_ignores_directory_symlinks(tmp_path):
+    """Directory symlinks must never be treated as record directories."""
+    store = Store(tmp_path / "qq")
+    add(store)  # creates 0001
+
+    ext_dir = tmp_path / "external_records"
+    ext_dir.mkdir()
+    symlink_path = store.dir / "0002"
+    try:
+        symlink_path.symlink_to(ext_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlinks not supported on this platform/filesystem")
+
+    dirs = store.record_dirs()
+    assert [p.name for p in dirs] == ["0001"]
+
+
+def test_purge_temp_unlinks_symlink_without_traversing(tmp_path):
+    """purge_temp must unlink symlinks rather than recursively deleting the target directory."""
+    store = Store(tmp_path / "qq")
+    store.ensure()
+    target_dir = tmp_path / "safe_dir"
+    target_dir.mkdir()
+    secret_file = target_dir / "keep.txt"
+    secret_file.write_text("keep-me", encoding="utf-8")
+
+    symlink_path = store.dir / ".tmp-attack"
+    try:
+        symlink_path.symlink_to(target_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlinks not supported on this platform/filesystem")
+
+    removed = store.purge_temp()
+    assert removed == 1
+    assert not symlink_path.exists()
+    assert secret_file.exists()
+    assert secret_file.read_text(encoding="utf-8") == "keep-me"
+
+
+def test_record_from_meta_coerces_id_to_int():
+    record = Record.from_meta({"id": "0042", "function": "my_fn"})
+    assert record.id == 42
+    assert isinstance(record.id, int)
+    assert f"{record.id:04d}" == "0042"
+
+    with pytest.raises(StorageError, match="invalid record id"):
+        Record.from_meta({"id": "not-a-number", "function": "my_fn"})
+
+
+def test_record_text_files_handle_non_utf8_bytes(tmp_path):
+    store = Store(tmp_path / "qq")
+    record = add(store)
+    rec_path = folder(record)
+
+    # Overwrite traceback.txt and input.txt with corrupted non-UTF-8 bytes
+    corrupted = b"\xff\xfe\x80\xbf\x00"
+    (rec_path / TRACEBACK_NAME).write_bytes(corrupted)
+    (rec_path / INPUT_TEXT_NAME).write_bytes(corrupted)
+
+    loaded = store.get(record.id)
+    tb_text = loaded.traceback_text()
+    in_text = loaded.input_text()
+
+    assert "\ufffd" in tb_text
+    assert "\ufffd" in in_text

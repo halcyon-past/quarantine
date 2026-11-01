@@ -31,6 +31,7 @@ attached to the runtime); the IAM permissions needed are documented in
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -442,5 +443,10 @@ def _safe_write_cache_file(target: Path, name: str, data: bytes) -> None:
         except OSError as exc:
             raise StorageError(f"cannot safely write {dest}: {exc}") from exc
 
-    with os.fdopen(file_fd, "wb") as f:
-        f.write(data)
+    try:
+        with os.fdopen(file_fd, "wb") as f:
+            f.write(data)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.close(file_fd)
+        raise

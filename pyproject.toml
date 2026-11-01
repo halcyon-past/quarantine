@@ -134,6 +134,7 @@ filterwarnings = [
     "ignore:.*datetime.datetime.utcnow.*:DeprecationWarning:botocore.*",
 ]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
 markers = [
     "regression: end-to-end user-journey regression tests (run with `pytest -m regression`)",

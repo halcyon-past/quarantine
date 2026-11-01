@@ -81,6 +81,42 @@ async def test_module_level_aretry(qdir, target_module):
     assert result.recovered == [1]
 
 
+async def test_module_level_aretry_with_import_from(qdir, tmp_path):
+    import importlib.util
+
+    script = tmp_path / "async_worker.py"
+    script.write_text(
+        """
+FAIL = True
+
+async def run_task(item):
+    if FAIL:
+        raise ValueError("failing")
+    return item
+""",
+        encoding="utf-8",
+    )
+    spec = importlib.util.spec_from_file_location("__main__", script)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    instance = Quarantine(qdir, halt_after=None, report=False)
+    await instance.acall(mod.run_task, 42)
+
+    script.write_text(
+        """
+FAIL = False
+
+async def run_task(item):
+    return item
+""",
+        encoding="utf-8",
+    )
+    result = await aretry(dir=str(qdir), import_from=script)
+    assert result.recovered == [1]
+
+
 def test_sentinels_survive_pickling():
     """Multiprocessing pickles return values; the sentinel must stay itself."""
     assert pickle.loads(pickle.dumps(QUARANTINED)) is QUARANTINED

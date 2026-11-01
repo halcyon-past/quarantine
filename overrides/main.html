@@ -11,17 +11,17 @@
   {# OpenGraph / Facebook #}
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="quarantine-py">
-  <meta property="og:url" content="{{ page.canonical_url or config.site_url }}">
-  <meta property="og:title" content="{% if page.title and not page.is_homepage %}{{ page.title }} — {% endif %}quarantine-py · Python Dead-Letter Queue & Loop Resilience">
-  <meta property="og:description" content="{{ page.meta.description or config.site_description }}">
+  <meta property="og:url" content="{{ (page.canonical_url if page else None) or config.site_url }}">
+  <meta property="og:title" content="{% if page and page.title and not page.is_homepage %}{{ page.title }} — {% endif %}quarantine-py · Python Dead-Letter Queue & Loop Resilience">
+  <meta property="og:description" content="{{ (page.meta.description if (page and page.meta and page.meta.description) else None) or config.site_description }}">
   <meta property="og:image" content="{{ config.site_url }}assets/quarantine-social.webp">
   <meta property="og:image:alt" content="quarantine-py - Python Dead-Letter Queue & Loop Resilience by Aritro Saha">
 
   {# Twitter Cards #}
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:url" content="{{ page.canonical_url or config.site_url }}">
-  <meta name="twitter:title" content="{% if page.title and not page.is_homepage %}{{ page.title }} — {% endif %}quarantine-py · Python Dead-Letter Queue & Loop Resilience">
-  <meta name="twitter:description" content="{{ page.meta.description or config.site_description }}">
+  <meta name="twitter:url" content="{{ (page.canonical_url if page else None) or config.site_url }}">
+  <meta name="twitter:title" content="{% if page and page.title and not page.is_homepage %}{{ page.title }} — {% endif %}quarantine-py · Python Dead-Letter Queue & Loop Resilience">
+  <meta name="twitter:description" content="{{ (page.meta.description if (page and page.meta and page.meta.description) else None) or config.site_description }}">
   <meta name="twitter:image" content="{{ config.site_url }}assets/quarantine-social.webp">
   <meta name="twitter:creator" content="@halcyon_past">
 

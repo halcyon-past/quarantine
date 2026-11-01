@@ -39,6 +39,7 @@ from .record import (
     payload_filename,
     utcnow,
 )
+from .reporting import warn
 from .serialize import Serialized
 
 __all__ = [
@@ -117,19 +118,35 @@ class FileLock:
         except OSError:
             return True  # vanished underneath us - retry immediately
         if age > self.stale_after:
-            with contextlib.suppress(OSError):
+            try:
                 self.path.unlink()
-            return True
+            except OSError:
+                return False  # Failed to break lock; do not bypass deadline
+            else:
+                return True
         return False
 
     def release(self) -> None:
         """Release the lock, tolerating a lock that was already broken open."""
+        can_unlink = True
         if self._fd is not None:
+            try:
+                fd_stat = os.fstat(self._fd)
+                path_stat = self.path.stat()
+                if (
+                    getattr(fd_stat, "st_ino", None)
+                    and getattr(path_stat, "st_ino", None)
+                    and fd_stat.st_ino != path_stat.st_ino
+                ):
+                    can_unlink = False
+            except OSError:
+                can_unlink = False
             with contextlib.suppress(OSError):
                 os.close(self._fd)
             self._fd = None
-        with contextlib.suppress(OSError):
-            self.path.unlink()
+        if can_unlink:
+            with contextlib.suppress(OSError):
+                self.path.unlink()
 
     def __enter__(self) -> FileLock:
         self.acquire()
@@ -382,7 +399,13 @@ class Store(StorageBackend):
             entries = list(os.scandir(self.dir))
         except OSError as exc:
             raise StorageError(f"cannot list {self.dir}: {exc}") from exc
-        found = [Path(entry.path) for entry in entries if entry.is_dir() and entry.name.isdigit()]
+        found = [
+            Path(entry.path)
+            for entry in entries
+            if entry.name.isdigit()
+            and entry.is_dir(follow_symlinks=False)
+            and not entry.is_symlink()
+        ]
         return sorted(found, key=lambda p: int(p.name))
 
     def records(self) -> list[Record]:
@@ -455,7 +478,10 @@ class Store(StorageBackend):
             shutil.rmtree(staging, ignore_errors=True)
             raise StorageError(f"cannot write a record into {self.dir}: {io_error}") from io_error
         record.path = final
-        self._index_upsert(record)
+        try:
+            self._index_upsert(record)
+        except StorageError as err:
+            warn(f"could not update index cache ({err}); index will rebuild on demand")
         return record
 
     def _promote(self, staging: Path, record: Record) -> Path:
@@ -516,7 +542,7 @@ class Store(StorageBackend):
         for entry in os.scandir(self.dir):
             if not entry.name.startswith(TMP_PREFIX):
                 continue
-            if entry.is_dir():
+            if entry.is_dir(follow_symlinks=False) and not entry.is_symlink():
                 shutil.rmtree(entry.path, ignore_errors=True)
             else:
                 with contextlib.suppress(OSError):
