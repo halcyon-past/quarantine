@@ -77,7 +77,7 @@ async for result in ashield(urls, using=fetch_url):
 - `only=(ValueError, KeyError)`: Catch only data errors, let syntax/logic bugs crash.
 - `halt_after=10`: Circuit breaker that stops the loop if 10 consecutive items fail.
 - `redact=["password", "token"]`: Masks sensitive fields before serializing to disk.
-- `dir="s3://my-bucket/quarantine"`: Ship quarantined records directly to AWS S3 or Google Cloud Storage.
+- `dir="s3://my-bucket/quarantine"` (or `gs://`, `azure://`): Ship quarantined records directly to AWS S3, Google Cloud Storage, or Azure Blob Storage.
 
 ## Documentation Index
 - [Home & Quick Tour](https://quarantine-py.aritro.cloud/)
@@ -88,7 +88,10 @@ async for result in ashield(urls, using=fetch_url):
 - [CLI Reference](https://quarantine-py.aritro.cloud/cli/)
 - [API Reference](https://quarantine-py.aritro.cloud/api/)
 - [Observability (Prometheus, Sentry, Datadog)](https://quarantine-py.aritro.cloud/observability/)
-- [Remote Storage (S3, GCS)](https://quarantine-py.aritro.cloud/remote-storage/)
+- [Remote Storage (S3, GCS, Azure)](https://quarantine-py.aritro.cloud/remote-storage/)
+- [AWS S3 Storage Guide](https://quarantine-py.aritro.cloud/aws-s3/)
+- [Google Cloud Storage Guide](https://quarantine-py.aritro.cloud/gcp-gcs/)
+- [Azure Blob Storage Guide](https://quarantine-py.aritro.cloud/azure-blob/)
 - [Troubleshooting](https://quarantine-py.aritro.cloud/troubleshooting/)
 - [FAQ](https://quarantine-py.aritro.cloud/faq/)
 - [Architecture Decision Records (ADRs)](https://quarantine-py.aritro.cloud/adr/)

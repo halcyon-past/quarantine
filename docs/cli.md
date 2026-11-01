@@ -1,3 +1,8 @@
+---
+title: CLI Reference & Commands (list, retry, debug, clear) · quarantine-py
+description: Command-line reference for quarantine. Commands, flags, exit codes, and output samples for list, show, retry, debug, clear, stats, and ui.
+---
+
 # Command-line reference
 
 [← docs index](index.md)
@@ -14,7 +19,7 @@ Every subcommand accepts:
 
 | Flag | Meaning |
 |---|---|
-| `-d PATH`, `--dir PATH` | Which quarantine to work on: a folder, or a [backend URL](remote-storage.md) like `s3://bucket/prefix`. Defaults to `$QUARANTINE_DIR`, else `./.quarantine`. |
+| `-d PATH`, `--dir PATH` | Which quarantine to work on: a folder, or a [backend URL](remote-storage.md) like `s3://bucket/prefix`, `gs://bucket/prefix`, or `azure://container/prefix`. Defaults to `$QUARANTINE_DIR`, else `./.quarantine`. |
 | `-h`, `--help` | Help for that subcommand. |
 
 ## Exit codes

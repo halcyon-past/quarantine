@@ -26,6 +26,9 @@ DOC_FILES = [
     "api.md",
     "on-disk-format.md",
     "remote-storage.md",
+    "aws-s3.md",
+    "gcp-gcs.md",
+    "azure-blob.md",
     "observability.md",
     "benchmarks.md",
     "troubleshooting.md",
@@ -40,7 +43,11 @@ def read(name: str) -> str:
 @pytest.mark.parametrize("name", DOC_FILES)
 def test_doc_pages_exist_and_are_substantial(name):
     text = read(name)
-    body = re.sub(r"^---\n.*?\n---\n+", "", text, flags=re.DOTALL)
+    body = text
+    if body.startswith("---"):
+        parts = body.split("---", 2)
+        if len(parts) >= 3:
+            body = parts[2].lstrip()
     assert body.startswith("# "), f"{name} does not start with a markdown title"
     assert len(text.splitlines()) > 30, "a stub is not documentation"
 

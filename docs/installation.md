@@ -1,3 +1,8 @@
+---
+title: Installation, Requirements & Cloud Storage Extras · quarantine-py
+description: Install quarantine-py via pip or conda with zero runtime dependencies. Optional extras for AWS S3, Google Cloud Storage, and Azure Blob Storage.
+---
+
 # Installation
 
 [← docs index](index.md)
@@ -21,6 +26,19 @@ The package lives at
 ```bash
 pip install quarantine-py
 ```
+
+### Remote storage extras
+
+The core package has zero runtime dependencies. Optional extras add client libraries for remote backends:
+
+```bash
+pip install "quarantine-py[s3]"     # AWS S3 (boto3)
+pip install "quarantine-py[gcs]"    # Google Cloud Storage (google-cloud-storage)
+pip install "quarantine-py[azure]"  # Azure Blob Storage (azure-storage-blob)
+pip install "quarantine-py[all]"    # All remote backends
+```
+
+See [remote storage](remote-storage.md) for full configuration, credentials and IAM setup.
 
 Releases are built in CI and published to PyPI with [trusted
 publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) - no long-lived

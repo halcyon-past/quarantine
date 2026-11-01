@@ -98,7 +98,7 @@ async for result in ashield(urls, using=fetch_url):
 - [CLI Reference](https://quarantine-py.aritro.cloud/cli/)
 - [API Reference](https://quarantine-py.aritro.cloud/api/)
 - [Observability (Prometheus, Sentry, Datadog)](https://quarantine-py.aritro.cloud/observability/)
-- [Remote Storage (S3, GCS)](https://quarantine-py.aritro.cloud/remote-storage/)
+- [Remote Storage (S3, GCS, Azure)](https://quarantine-py.aritro.cloud/remote-storage/)
 - [Troubleshooting](https://quarantine-py.aritro.cloud/troubleshooting/)
 - [FAQ](https://quarantine-py.aritro.cloud/faq/)
 - [Architecture Decision Records (ADRs)](https://quarantine-py.aritro.cloud/adr/)
