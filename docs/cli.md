@@ -221,7 +221,7 @@ printing mojibake or raising.
 
 ## `quarantine ui`
 
-Starts a local, read-only web dashboard to view quarantined records in your browser.
+Starts a local web dashboard to view and retry quarantined records in your browser.
 This provides a cleaner interface for inspecting tracebacks and payloads than `quarantine show`.
 
 ```bash

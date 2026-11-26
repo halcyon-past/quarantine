@@ -267,7 +267,7 @@ class RedisStore(StorageBackend):
                 if not key.startswith(marker):
                     continue
                 tail = key[len(marker) :]
-                if tail.isdigit():
+                if tail.isascii() and tail.isdigit():
                     out[int(tail)] = key
         except self._client_error as exc:
             raise self._wrap("list records", exc) from exc
@@ -347,6 +347,8 @@ class RedisStore(StorageBackend):
         self, record_id: int, files: dict[str, bytes], *, replace: bool = False
     ) -> Path:
         with self._mutex:
+            if self._cache.is_symlink():
+                raise StorageError(f"cache directory is an unsafe symlink: {self._cache}")
             if replace:
                 stale = self._cache / f"{record_id:04d}"
                 if stale.is_symlink():
@@ -507,7 +509,10 @@ class RedisStore(StorageBackend):
         record_id = record if isinstance(record, int) else record.id
         self._delete_keys([self._record_key(record_id)], action=f"delete record {record_id}")
         with self._mutex:
-            shutil.rmtree(self._cache / f"{record_id:04d}", ignore_errors=True)
+            if not self._cache.is_symlink():
+                target = self._cache / f"{record_id:04d}"
+                if not target.is_symlink():
+                    shutil.rmtree(target, ignore_errors=True)
 
     def clear(self) -> int:
         """Delete every record and reset the id counter under the prefix."""
@@ -518,7 +523,8 @@ class RedisStore(StorageBackend):
         )
         self._delete_keys([*ordered_keys, self._next_id_key()], action="clear records")
         with self._mutex:
-            shutil.rmtree(self._cache, ignore_errors=True)
+            if not self._cache.is_symlink():
+                shutil.rmtree(self._cache, ignore_errors=True)
         return removed
 
     def purge_temp(self) -> int:
@@ -613,9 +619,11 @@ def _safe_write_cache_file(target: Path, name: str, data: bytes) -> None:
             raise StorageError(f"cannot safely write {dest}: {exc}") from exc
 
     try:
-        with os.fdopen(file_fd, "wb") as f:
-            f.write(data)
+        fileobj = os.fdopen(file_fd, "wb")
     except Exception:
         with contextlib.suppress(OSError):
             os.close(file_fd)
         raise
+
+    with fileobj:
+        fileobj.write(data)
