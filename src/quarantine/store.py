@@ -665,22 +665,34 @@ def _scheme_of(value: str) -> str | None:
     return value[: value.index("://")].lower() if match else None
 
 
+def _is_volume_path(value: str | os.PathLike[str]) -> bool:
+    raw = Path(value).as_posix() if isinstance(value, os.PathLike) else str(value)
+    return raw == "/Volumes" or raw.startswith("/Volumes/")
+
+
 def coerce_dir(value: str | os.PathLike[str] | None) -> Path | str:
-    """Normalise a ``dir=`` argument: backend URLs stay strings, paths become ``Path``.
+    """Normalise a ``dir=`` argument: backend URLs and ``/Volumes/`` paths stay strings.
 
     ``Path("s3://bucket")`` would silently collapse the ``//`` and corrupt the
-    URL, which is why this must happen before any ``Path()`` call.
+    URL, and ``Path("/Volumes/...")`` would flip separators on Windows, which
+    is why both must stay strings before any ``Path()`` call.
     """
     if value is None:
         return default_dir()
     if isinstance(value, str) and _scheme_of(value) is not None:
         return value
+    if _is_volume_path(value):
+        return Path(value).as_posix() if isinstance(value, os.PathLike) else str(value)
     return Path(value)
 
 
 def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBackend:
-    """Open the right backend for *directory*: a local path or a backend URL."""
+    """Open the right backend for *directory*: a local path, Volume path, or backend URL."""
     target = coerce_dir(directory)
+    if _is_volume_path(target):
+        from .databricks_store import DatabricksVolumeStore  # noqa: PLC0415
+
+        return DatabricksVolumeStore(target)
     if isinstance(target, Path):
         return Store(target)
     scheme = _scheme_of(target)
@@ -725,7 +737,7 @@ def default_dir() -> Path | str:
     as well as a path.
     """
     value = os.environ.get("QUARANTINE_DIR") or ".quarantine"
-    if _scheme_of(value) is not None:
+    if _scheme_of(value) is not None or _is_volume_path(value):
         return value
     return Path(value)
 
