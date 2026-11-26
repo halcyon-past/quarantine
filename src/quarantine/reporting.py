@@ -148,12 +148,15 @@ def columnize(
     """Render a simple, aligned text table (no dependencies, no drama)."""
     header_list = [str(h) for h in headers]
     body = [[("" if cell is None else str(cell)) for cell in row] for row in rows]
-    limits = list(widths) if widths is not None else [None] * len(header_list)
-    limits += [None] * (len(header_list) - len(limits))
+    col_count = max([len(header_list), *(len(r) for r in body)], default=0)
+    limits = list(widths) if widths is not None else [None] * col_count
+    limits += [None] * (col_count - len(limits))
 
     sizes = []
-    for index, header in enumerate(header_list):
-        longest = max([len(header), *[len(r[index]) for r in body if index < len(r)]])
+    for index in range(col_count):
+        candidates = [len(header_list[index])] if index < len(header_list) else [0]
+        candidates.extend(len(r[index]) for r in body if index < len(r))
+        longest = max(candidates)
         cap = limits[index]
         sizes.append(min(longest, cap) if cap else longest)
 
@@ -161,7 +164,12 @@ def columnize(
         out = []
         for index, cell in enumerate(cells):
             width = sizes[index]
-            text = cell if len(cell) <= width else cell[: max(1, width - 1)] + "…"
+            if len(cell) <= width:
+                text = cell
+            elif width <= 1:
+                text = "…" if width == 1 else ""
+            else:
+                text = cell[: width - 1] + "…"
             out.append(text.ljust(width) if index < len(cells) - 1 else text)
         return "  ".join(out).rstrip()
 

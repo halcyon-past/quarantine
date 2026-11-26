@@ -22,7 +22,7 @@ from .errors import QuarantineError, StorageError
 from .record import Record
 from .reporting import columnize, emit
 from .resolve import ResolutionError, resolve_function, unwrap_quarantined
-from .store import StorageBackend, coerce_dir, open_store
+from .store import StorageBackend, Store, coerce_dir, open_store
 from .ui import start_server
 
 __all__ = ["main"]
@@ -397,12 +397,15 @@ def cmd_clear(args: argparse.Namespace) -> int:
     """``quarantine clear``."""
     store = _store(args)
     if args.ids:
+        existing = (
+            {int(p.name) for p in store.record_dirs()}
+            if isinstance(store, Store)
+            else {r.id for r in store.records()}
+        )
         status = EXIT_OK
         for record_id in args.ids:
-            try:
-                store.get(record_id)
-            except StorageError as exc:
-                err(f"quarantine: {exc}")
+            if record_id not in existing:
+                err(f"quarantine: no record {record_id} in {store.dir}")
                 status = EXIT_PROBLEM
                 continue
             store.delete(record_id)

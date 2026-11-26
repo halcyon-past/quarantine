@@ -238,6 +238,8 @@ class DatabricksVolumeStore(StorageBackend):
         self, record_id: int, files: dict[str, bytes], *, replace: bool = False
     ) -> Path:
         with self._mutex:
+            if self._cache.is_symlink():
+                raise StorageError(f"cache directory is an unsafe symlink: {self._cache}")
             if replace:
                 stale = self._cache / f"{record_id:04d}"
                 if stale.is_symlink():
@@ -361,8 +363,14 @@ class DatabricksVolumeStore(StorageBackend):
         record.path = self._write_cache(record.id, payload, replace=True)
         return record
 
+    def _require_exists(self, record_id: int) -> None:
+        files = self._list_record_dir(record_id)
+        if META_NAME not in files:
+            raise StorageError(f"no record {record_id} in {self.dir}")
+
     def update(self, record: Record) -> None:
         """Rewrite ``meta.json`` for an existing record."""
+        self._require_exists(record.id)
         meta_bytes = _encode_meta(record)
         try:
             self._put(self._file_path(record.id, META_NAME), meta_bytes, overwrite=True)
@@ -376,6 +384,7 @@ class DatabricksVolumeStore(StorageBackend):
         """Replace a record's stored traceback (used when a retry fails again)."""
         import traceback as tb  # noqa: PLC0415 - keep the module namespace tidy
 
+        self._require_exists(record.id)
         text = "".join(tb.format_exception(type(exc), exc, exc.__traceback__)).encode("utf-8")
         try:
             self._put(self._file_path(record.id, TRACEBACK_NAME), text, overwrite=True)
@@ -407,7 +416,10 @@ class DatabricksVolumeStore(StorageBackend):
         if files:
             self._delete_record_dir(record_id, files)
         with self._mutex:
-            shutil.rmtree(self._cache / f"{record_id:04d}", ignore_errors=True)
+            if not self._cache.is_symlink():
+                target = self._cache / f"{record_id:04d}"
+                if not target.is_symlink():
+                    shutil.rmtree(target, ignore_errors=True)
 
     def clear(self) -> int:
         """Delete every record under the volume path. Returns how many were committed."""
@@ -416,7 +428,8 @@ class DatabricksVolumeStore(StorageBackend):
         for record_id, files in listing.items():
             self._delete_record_dir(record_id, files)
         with self._mutex:
-            shutil.rmtree(self._cache, ignore_errors=True)
+            if not self._cache.is_symlink():
+                shutil.rmtree(self._cache, ignore_errors=True)
             self._id_hint = 0
         return removed
 
@@ -508,9 +521,11 @@ def _safe_write_cache_file(target: Path, name: str, data: bytes) -> None:
             raise StorageError(f"cannot safely write {dest}: {exc}") from exc
 
     try:
-        with os.fdopen(file_fd, "wb") as f:
-            f.write(data)
+        fileobj = os.fdopen(file_fd, "wb")
     except Exception:
         with contextlib.suppress(OSError):
             os.close(file_fd)
         raise
+
+    with fileobj:
+        fileobj.write(data)

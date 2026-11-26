@@ -19,6 +19,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import sys
 import tempfile
 import threading
@@ -97,14 +98,15 @@ class FileLock:
             try:
                 self._fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
             except (FileExistsError, PermissionError):
-                if self._break_if_stale() or time.monotonic() < deadline:
-                    time.sleep(delay)
-                    delay = min(delay * 2, 0.05)
-                    continue
-                raise StorageError(
-                    f"timed out after {self.timeout}s waiting for {self.path}; "
-                    f"delete it if no other process is using this folder"
-                ) from None
+                if time.monotonic() >= deadline:
+                    raise StorageError(
+                        f"timed out after {self.timeout}s waiting for {self.path}; "
+                        f"delete it if no other process is using this folder"
+                    ) from None
+                self._break_if_stale()
+                time.sleep(delay)
+                delay = min(delay * 2, 0.05)
+                continue
             except OSError as exc:
                 raise StorageError(f"cannot create lock {self.path}: {exc}") from exc
             else:
@@ -114,10 +116,10 @@ class FileLock:
 
     def _break_if_stale(self) -> bool:
         try:
-            age = time.time() - self.path.stat().st_mtime
+            st = self.path.lstat()
         except OSError:
-            return True  # vanished underneath us - retry immediately
-        if age > self.stale_after:
+            return False
+        if stat.S_ISLNK(st.st_mode) or (time.time() - st.st_mtime) > self.stale_after:
             try:
                 self.path.unlink()
             except OSError:
@@ -128,16 +130,15 @@ class FileLock:
 
     def release(self) -> None:
         """Release the lock, tolerating a lock that was already broken open."""
-        can_unlink = True
+        can_unlink = False
         if self._fd is not None:
+            can_unlink = True
             try:
                 fd_stat = os.fstat(self._fd)
-                path_stat = self.path.stat()
-                if (
-                    getattr(fd_stat, "st_ino", None)
-                    and getattr(path_stat, "st_ino", None)
-                    and fd_stat.st_ino != path_stat.st_ino
-                ):
+                path_stat = self.path.lstat()
+                fd_ino = getattr(fd_stat, "st_ino", None)
+                path_ino = getattr(path_stat, "st_ino", None)
+                if fd_ino is not None and path_ino is not None and fd_ino != path_ino:
                     can_unlink = False
             except OSError:
                 can_unlink = False
@@ -507,7 +508,10 @@ class Store(StorageBackend):
             raise StorageError(f"no record {record.id} in {self.dir}")
         record.path = path
         _write_atomic(path / META_NAME, _encode_meta(record))
-        self._index_upsert(record)
+        try:
+            self._index_upsert(record)
+        except StorageError as err:
+            warn(f"could not update index cache ({err}); index will rebuild on demand")
 
     def write_traceback(self, record: Record, exc: BaseException) -> None:
         """Replace a record's stored traceback (used when a retry fails again)."""
@@ -519,19 +523,25 @@ class Store(StorageBackend):
         """Remove one record from disk."""
         record_id = record if isinstance(record, int) else record.id
         path = self.dir / self._dirname(record_id)
-        if path.is_dir():
+        if path.is_symlink():
+            with contextlib.suppress(OSError):
+                path.unlink()
+        elif path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
         self._index_remove(record_id)
 
     def clear(self) -> int:
         """Delete every record (and the index). Returns how many were removed."""
+        if not self.exists():
+            return 0
         removed = 0
-        for path in self.record_dirs():
-            shutil.rmtree(path, ignore_errors=True)
-            removed += 1
-        with contextlib.suppress(OSError):
-            self.index_path.unlink()
-        self._id_hint = 0
+        with self._lock, self._lockfile():
+            for path in self.record_dirs():
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+            with contextlib.suppress(OSError):
+                self.index_path.unlink()
+            self._id_hint = 0
         return removed
 
     def purge_temp(self) -> int:
@@ -558,7 +568,7 @@ class Store(StorageBackend):
     def read_index(self) -> dict[str, Any] | None:
         """Read ``index.json``, or ``None`` if it is absent or unusable."""
         try:
-            raw = self.index_path.read_text(encoding="utf-8")
+            raw = self.index_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return None
         try:
@@ -632,10 +642,13 @@ class Store(StorageBackend):
     def disk_bytes(self) -> int:
         """Total bytes of every file in the folder."""
         total = 0
-        for root, _dirs, names in os.walk(self.dir):
+        for root, _dirs, names in os.walk(self.dir, followlinks=False):
             for name in names:
+                p = Path(root) / name
+                if p.is_symlink():
+                    continue
                 with contextlib.suppress(OSError):
-                    total += (Path(root) / name).stat().st_size
+                    total += p.lstat().st_size
         return total
 
 
