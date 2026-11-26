@@ -51,6 +51,7 @@ MAX_ID_ATTEMPTS = 64
 DEFAULT_PREFIX = "quarantine"
 _DELETE_BATCH = 1000
 _USERINFO_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)([^/@]*@)")
+_QUERY_PASSWORD_RE = re.compile(r"(?i)([?&]password=)[^&#]*")
 
 _INDEX_FIELDS = (
     "id",
@@ -82,11 +83,12 @@ def _safe_url_for_error(url: str) -> str:
     """Mask any credentials in *url* before embedding it in an error message."""
     try:
         parsed = urllib.parse.urlparse(url)
-        if parsed.password is not None:
+        if parsed.password is not None or _QUERY_PASSWORD_RE.search(url):
             return _mask_password(parsed)
     except ValueError:
         pass
-    return _USERINFO_RE.sub(r"\1***@", url).rstrip("/")
+    masked = _USERINFO_RE.sub(r"\1***@", url)
+    return _QUERY_PASSWORD_RE.sub(r"\1***", masked).rstrip("/")
 
 
 def _parse_ttl(raw: str | int | None, safe_url: str) -> int | None:
@@ -110,15 +112,16 @@ def _parse_ttl(raw: str | int | None, safe_url: str) -> int | None:
 
 def _mask_password(parsed: urllib.parse.ParseResult) -> str:
     """Return the URL string with any password replaced by '***'."""
-    if parsed.password is None:
-        return urllib.parse.urlunparse(parsed).rstrip("/")
-    user = urllib.parse.quote(parsed.username or "", safe="")
-    host = parsed.hostname or ""
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    port = f":{parsed.port}" if parsed.port is not None else ""
-    netloc = f"{user}:***@{host}{port}"
-    return urllib.parse.urlunparse(parsed._replace(netloc=netloc)).rstrip("/")
+    if parsed.password is not None:
+        user = urllib.parse.quote(parsed.username or "", safe="")
+        host = parsed.hostname or ""
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        netloc = f"{user}:***@{host}{port}"
+        parsed = parsed._replace(netloc=netloc)
+    raw = urllib.parse.urlunparse(parsed).rstrip("/")
+    return _QUERY_PASSWORD_RE.sub(r"\1***", raw)
 
 
 def _parse_redis_url(
@@ -163,6 +166,10 @@ def _parse_redis_url(
         else (query_prefix_list[-1] if query_prefix_list else path_prefix)
     )
     resolved_prefix = resolved_prefix.strip(":/") or DEFAULT_PREFIX
+    if "{" in resolved_prefix or "}" in resolved_prefix:
+        raise StorageError(
+            f"invalid prefix {resolved_prefix!r} in {safe_url!r}: cannot contain '{{' or '}}'"
+        )
 
     if ttl is not None:
         resolved_ttl = _parse_ttl(ttl, safe_url)

@@ -327,6 +327,10 @@ def test_invalid_urls_and_ttl_are_rejected():
         RedisStore("redis://localhost:6379/0", ttl=-5)
     with pytest.raises(StorageError, match="ttl"):
         RedisStore("redis://localhost:6379/0", ttl=True)
+    with pytest.raises(StorageError, match="prefix"):
+        RedisStore("redis://localhost:6379/0?prefix=bad{tag}")
+    with pytest.raises(StorageError, match="prefix"):
+        RedisStore("redis://localhost:6379/0", prefix="bad}tag")
 
 
 def test_invalid_from_url_param_is_wrapped_and_secrets_masked():
@@ -398,6 +402,12 @@ def test_password_is_masked_in_dir_and_repr_but_retained_for_client(monkeypatch,
     s_pw_only = RedisStore("redis://:supersecret@localhost:6379/0")
     assert "supersecret" not in s_pw_only.dir
     assert "***@localhost:6379" in s_pw_only.dir
+    assert "supersecret" in captured[-1]
+
+    s_query_pw = RedisStore("redis://localhost:6379/0?password=supersecret&prefix=q")
+    assert "supersecret" not in s_query_pw.dir
+    assert "supersecret" not in repr(s_query_pw)
+    assert "password=***" in s_query_pw.dir
     assert "supersecret" in captured[-1]
 
 
