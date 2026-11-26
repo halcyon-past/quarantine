@@ -66,6 +66,8 @@ nav:
       - AWS S3: aws-s3.md
       - Google Cloud Storage: gcp-gcs.md
       - Azure Blob Storage: azure-blob.md
+      - Redis: redis.md
+      - Databricks Volumes: databricks.md
   - Benchmarks: benchmarks.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md
