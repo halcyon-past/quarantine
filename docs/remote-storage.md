@@ -1,6 +1,6 @@
 ---
-title: Remote Cloud Storage Backends (S3, GCS, Azure Blob) · quarantine-py
-description: Pluggable remote storage for Python dead-letter queues. Share one quarantine across Kubernetes, Docker, and Lambda fleets on AWS S3, Google Cloud Storage, or Azure Blob Storage.
+title: Remote Storage Backends (S3, GCS, Azure Blob, Redis) · quarantine-py
+description: Pluggable remote storage for Python dead-letter queues. Share one quarantine across Kubernetes, Docker, and Lambda fleets on AWS S3, Google Cloud Storage, Azure Blob Storage, or Redis.
 ---
 
 # Remote storage
@@ -368,6 +368,32 @@ lives in [ADR 0007](adr/0007-object-store-commit-point.md)):
 - **There is no `index.json` object.** Azure blob listings are strongly consistent, so the
   listing *is* the index; nothing can go stale.
 
+## Using the Redis backend
+
+For short-lived, high-churn quarantines where an object store is overkill,
+install the `redis` extra:
+
+```bash
+pip install "quarantine-py[redis]"
+```
+
+Use a `redis://` (or `rediss://` for TLS) URL anywhere a folder went:
+
+```python
+@quarantine(dir="redis://localhost:6379/0?prefix=etl:quarantine&ttl=3600")
+def process(item): ...
+```
+
+```bash
+quarantine list  --dir "redis://localhost:6379/0?prefix=etl:quarantine"
+quarantine retry --dir "redis://localhost:6379/0?prefix=etl:quarantine" --import job.py
+```
+
+Records are stored atomically as Redis hashes under `{<prefix>}:record:<id>`
+(default prefix `quarantine`), with ids allocated via `INCR` on
+`{<prefix>}:next_id`. Optional `ttl` (in seconds) expires each record hash
+automatically.
+
 ## Writing your own backend
 
 The interface is public and small. Subclass
@@ -393,7 +419,7 @@ From then on `dir="mystore://…"` works everywhere a path does. Whatever the
 transport, keep the two promises: a reader never sees a partial record, and a
 failed write never silently loses one.
 
-Redis and Databricks Unity Catalog volumes are planned as
-further built-ins — see [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md);
-the interface above is how they will be built, and how you can build one
+Databricks Unity Catalog volumes are planned as a
+further built-in — see [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md);
+the interface above is how it will be built, and how you can build one
 sooner.
