@@ -167,9 +167,9 @@ Installing also puts a `quarantine` command on your `PATH`. Check both halves:
 
 ```bash
 $ quarantine --version
-quarantine 2.0.0
+quarantine 2.1.0
 $ python -c "import quarantine; print(quarantine.__version__)"
-2.0.0
+2.1.0
 ```
 
 If the command is not found (a common `--user` install wrinkle), the module
@@ -425,7 +425,7 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | [docs/cli.md](https://quarantine-py.aritro.cloud/cli/) | Every command, flag and exit code, with output samples. |
 | [docs/api.md](https://quarantine-py.aritro.cloud/api/) | Complete Python API reference. |
 | [docs/on-disk-format.md](https://quarantine-py.aritro.cloud/on-disk-format/) | What is in `.quarantine/`, and the guarantees about it. |
-| [docs/remote-storage.md](https://quarantine-py.aritro.cloud/remote-storage/) | One shared quarantine on S3, GCS, or Azure Blob Storage for a fleet of workers: setup, credentials, IAM. |
+| [docs/remote-storage.md](https://quarantine-py.aritro.cloud/remote-storage/) | One shared quarantine on S3, GCS, Azure Blob Storage, Redis, or Databricks Unity Catalog Volumes for a fleet of workers: setup, credentials, IAM. |
 | [docs/aws-s3.md](https://quarantine-py.aritro.cloud/aws-s3/) | AWS S3 guide: IAM policies, ECS/EKS/Lambda auth, SSE-KMS, and LocalStack. |
 | [docs/gcp-gcs.md](https://quarantine-py.aritro.cloud/gcp-gcs/) | Google Cloud Storage guide: ADC, GKE Workload Identity, CMEK, and fake-gcs-server. |
 | [docs/azure-blob.md](https://quarantine-py.aritro.cloud/azure-blob/) | Azure Blob Storage guide: Entra ID Managed Identity, connection strings, AKS, and Azurite. |

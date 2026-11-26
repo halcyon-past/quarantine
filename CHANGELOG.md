@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-27
+
 ### Added
 - **Databricks Unity Catalog Volumes backend for pluggable storage** ([#56](https://github.com/halcyon-past/quarantine/issues/56)): `dir="/Volumes/catalog/schema/volume/quarantine"` (as well as `--dir` and `$QUARANTINE_DIR`) stores quarantined records directly in governed Unity Catalog Volumes via `databricks-sdk` (`pip install "quarantine-py[databricks]"` — core remains zero-dependency). Ids are claimed atomically via `.claim` with `overwrite=False` and `meta.json` is uploaded last as the commit point ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). Documented in [docs/remote-storage.md](docs/remote-storage.md).
 - **Redis storage backend for pluggable storage** ([#55](https://github.com/halcyon-past/quarantine/issues/55)): `dir="redis://host:6379/0"` (and `rediss://` for TLS, with optional `?prefix=...&ttl=...` query parameters) stores quarantined records atomically as Redis hashes under `{<prefix>}:record:<id>` using `MULTI`/`EXEC` transactions, with `INCR`-based id allocation and optional per-record TTL expiration (`pip install "quarantine-py[redis]"`). Documented in [docs/remote-storage.md](docs/remote-storage.md).
