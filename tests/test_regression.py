@@ -851,6 +851,11 @@ class _MiniRespServer:
         if cmd == "PING":
             return b"+PONG\r\n"
         if cmd == "HELLO":
+            if args and args[0] == b"3":
+                return (
+                    b"%3\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
+                    b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:3\r\n"
+                )
             return (
                 b"*6\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
                 b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:2\r\n"
