@@ -1,3 +1,8 @@
+---
+title: Complete Python API Reference (@quarantine, shield, ashield) · quarantine-py
+description: Complete API reference for quarantine-py. Parameters and return values for @quarantine, shield, ashield, Record, Store, and StorageBackend.
+---
+
 # Python API reference
 
 [← docs index](index.md)
@@ -29,7 +34,7 @@ and on `async def`.
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `dir` | `$QUARANTINE_DIR` or `./.quarantine` | Where records are written: a folder, or a [backend URL](remote-storage.md) like `s3://bucket/prefix`. |
+| `dir` | `$QUARANTINE_DIR` or `./.quarantine` | Where records are written: a folder, or a [backend URL](remote-storage.md) like `s3://bucket/prefix`, `gs://bucket/prefix`, or `azure://container/prefix`. |
 | `only` | `(Exception,)` | Exception types to quarantine; anything else propagates. A bare class is accepted. |
 | `exclude` | `()` | Exception types to let through even if `only` matches. |
 | `halt_after` | `50` | Raise `SystemicFailure` after this many *consecutive* failures. `None` disables it. |
@@ -103,7 +108,7 @@ to several folders.
 | `acall(fn, *args, **kwargs)` | Awaitable form of `call`. |
 | `records(function=None)` | `list[Record]`, oldest first, optionally filtered by function name. |
 | `retry(ids=None, *, using=None, function=None, dry_run=False, import_from=None)` | Re-run records; returns `RetryResult`. |
-| `aretry(...)` | Awaitable `retry`, for `async def` records. |
+| `aretry(ids=None, *, using=None, function=None, dry_run=False, import_from=None)` | Awaitable `retry`, for `async def` records. |
 | `clear()` | Delete every record; returns how many. |
 | `summary_line()` | The end-of-run line, or `None` when there is nothing to report. |
 | `replace(**changes)` | A new instance with some settings changed. |
@@ -125,7 +130,7 @@ These act on the default folder, or on `dir=` if you pass one.
 |---|---|
 | `records(function=None, *, dir=None)` | Everything currently quarantined. |
 | `retry(ids=None, *, using=None, function=None, dir=None, dry_run=False, import_from=None)` | Re-run records. |
-| `aretry(...)` | Awaitable `retry`. |
+| `aretry(ids=None, *, using=None, function=None, dir=None, dry_run=False, import_from=None)` | Awaitable `retry`. |
 | `clear(*, dir=None)` | Empty the folder. |
 | `summary(*, dir=None)` | The summary line, or `None`. |
 | `get_quarantine(dir=None, **options)` | The shared instance for those options. |
@@ -215,13 +220,14 @@ store.fingerprints()  # {fingerprint: id}
 ## Storage backends
 
 `dir=` (and `--dir`, and `$QUARANTINE_DIR`) also accepts a backend URL —
-`dir="s3://bucket/prefix"` stores records in a bucket instead of a folder.
+`dir="s3://bucket/prefix"`, `dir="gs://bucket/prefix"`, or `dir="azure://container/prefix"`
+stores records in cloud object storage instead of a folder.
 See [remote storage](remote-storage.md) for setup, credentials and IAM.
 
 | | |
 |---|---|
 | `StorageBackend` | The abstract interface every backend implements; `Store` is the local reference implementation. Subclass it to build your own. |
-| `open_store(dir)` | Open the right backend for a path or URL: `open_store("s3://bucket/prefix")`, `open_store(".quarantine")`. |
+| `open_store(dir)` | Open the right backend for a path or URL: `open_store("azure://container/prefix")`, `open_store("s3://bucket/prefix")`, `open_store(".quarantine")`. |
 | `register_backend(scheme, factory)` | Claim a URL scheme for a custom backend: `register_backend("mystore", MyStore)`. Registering an existing scheme replaces it. |
 
 ## Exceptions

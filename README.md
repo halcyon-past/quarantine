@@ -1,5 +1,6 @@
 # 🏥 quarantine
 
+[![Documentation](https://img.shields.io/badge/docs-quarantine--py.aritro.cloud-004d40.svg)](https://quarantine-py.aritro.cloud/)
 [![PyPI version](https://img.shields.io/pypi/v/quarantine-py.svg)](https://pypi.org/project/quarantine-py/)
 [![Conda Version](https://img.shields.io/conda/vn/conda-forge/quarantine-py.svg)](https://anaconda.org/conda-forge/quarantine-py)
 [![Python versions](https://img.shields.io/pypi/pyversions/quarantine-py.svg)](https://pypi.org/project/quarantine-py/)
@@ -158,7 +159,7 @@ pip install -e ".[dev]"       # includes pytest, ruff, mypy, hypothesis
 | | |
 |---|---|
 | Python | 3.10 or newer (CPython; tested on 3.10 - 3.13) |
-| Runtime dependencies | none - it is standard library only. (The optional `s3://` backend adds boto3: `pip install "quarantine-py[s3]"`.) |
+| Runtime dependencies | none - it is standard library only. (The optional `s3://`, `gs://`, and `azure://` backends add their client libraries: `pip install "quarantine-py[s3]"`, `[gcs]`, or `[azure]`.) |
 | Operating systems | Linux, macOS, Windows (tested on all three in CI) |
 | Type checking | Fully typed, ships `py.typed` - works with mypy and Pyright out of the box (the codebase itself passes strict mypy) |
 
@@ -166,9 +167,9 @@ Installing also puts a `quarantine` command on your `PATH`. Check both halves:
 
 ```bash
 $ quarantine --version
-quarantine 1.2.0
+quarantine 2.1.0
 $ python -c "import quarantine; print(quarantine.__version__)"
-1.2.0
+2.1.0
 ```
 
 If the command is not found (a common `--user` install wrinkle), the module
@@ -252,7 +253,7 @@ Tune it: `@quarantine(halt_after=100)`.
 
 ```python
 @quarantine(
-    dir=".quarantine",  # where the sick bay lives - a folder, or s3://bucket/prefix
+    dir=".quarantine",  # where the sick bay lives - a folder, or s3://, gs://, azure://
     only=(ValueError, KeyError),  # only quarantine these; others still crash
     halt_after=50,  # consecutive-failure circuit breaker
     max_items=10_000,  # cap disk usage
@@ -417,21 +418,24 @@ Rendered and searchable at **[quarantine-py.aritro.cloud](https://quarantine-py.
 | [PyPI: quarantine-py](https://pypi.org/project/quarantine-py/) | The released package - versions, wheels, and metadata. |
 | [Conda-forge: quarantine-py](https://anaconda.org/conda-forge/quarantine-py) | Conda feedstock package for conda, mamba, and pixi. |
 | [Releases](https://github.com/halcyon-past/quarantine/releases) | New versions, with notes. **Watch → Custom → Releases** on this repo to get notified. |
-| [docs/installation.md](https://github.com/halcyon-past/quarantine/blob/main/docs/installation.md) | Installing, verifying, upgrading, uninstalling. |
-| [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md) | The full guide: options, async, threads, retry loops, alerting, recipes. |
-| [docs/examples.md](https://github.com/halcyon-past/quarantine/blob/main/docs/examples.md) | Practical real-world examples and the file structure behind the scenes. |
-| [docs/recipes.md](https://github.com/halcyon-past/quarantine/blob/main/docs/recipes.md) | Framework recipes: a pandas ETL job, a web scraper, an Airflow task, a FastAPI background worker. |
-| [docs/cli.md](https://github.com/halcyon-past/quarantine/blob/main/docs/cli.md) | Every command, flag and exit code, with output samples. |
-| [docs/api.md](https://github.com/halcyon-past/quarantine/blob/main/docs/api.md) | Complete Python API reference. |
-| [docs/on-disk-format.md](https://github.com/halcyon-past/quarantine/blob/main/docs/on-disk-format.md) | What is in `.quarantine/`, and the guarantees about it. |
-| [docs/remote-storage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/remote-storage.md) | One shared quarantine on S3 for a fleet of workers: setup, credentials, IAM. |
-| [docs/observability.md](https://github.com/halcyon-past/quarantine/blob/main/docs/observability.md) | Wiring the hooks into Prometheus, Datadog, Sentry and plain logging. |
-| [docs/benchmarks.md](https://github.com/halcyon-past/quarantine/blob/main/docs/benchmarks.md) | What the decorator costs when nothing fails, with the methodology. |
-| [docs/troubleshooting.md](https://github.com/halcyon-past/quarantine/blob/main/docs/troubleshooting.md) | "It skipped my item", "retry says it cannot import", and friends. |
-| [docs/faq.md](https://github.com/halcyon-past/quarantine/blob/main/docs/faq.md) | Longer answers to the questions below. |
-| [docs/adr/](https://github.com/halcyon-past/quarantine/blob/main/docs/adr/README.md) | Architecture decision records: why rename-based atomicity, why not JSONL, why pickle-first, and friends. |
+| [docs/installation.md](https://quarantine-py.aritro.cloud/installation/) | Installing, verifying, upgrading, uninstalling. |
+| [docs/usage.md](https://quarantine-py.aritro.cloud/usage/) | The full guide: options, async, threads, retry loops, alerting, recipes. |
+| [docs/examples.md](https://quarantine-py.aritro.cloud/examples/) | Practical real-world examples and the file structure behind the scenes. |
+| [docs/recipes.md](https://quarantine-py.aritro.cloud/recipes/) | Framework recipes: a pandas ETL job, a web scraper, an Airflow task, a FastAPI background worker. |
+| [docs/cli.md](https://quarantine-py.aritro.cloud/cli/) | Every command, flag and exit code, with output samples. |
+| [docs/api.md](https://quarantine-py.aritro.cloud/api/) | Complete Python API reference. |
+| [docs/on-disk-format.md](https://quarantine-py.aritro.cloud/on-disk-format/) | What is in `.quarantine/`, and the guarantees about it. |
+| [docs/remote-storage.md](https://quarantine-py.aritro.cloud/remote-storage/) | One shared quarantine on S3, GCS, Azure Blob Storage, Redis, or Databricks Unity Catalog Volumes for a fleet of workers: setup, credentials, IAM. |
+| [docs/aws-s3.md](https://quarantine-py.aritro.cloud/aws-s3/) | AWS S3 guide: IAM policies, ECS/EKS/Lambda auth, SSE-KMS, and LocalStack. |
+| [docs/gcp-gcs.md](https://quarantine-py.aritro.cloud/gcp-gcs/) | Google Cloud Storage guide: ADC, GKE Workload Identity, CMEK, and fake-gcs-server. |
+| [docs/azure-blob.md](https://quarantine-py.aritro.cloud/azure-blob/) | Azure Blob Storage guide: Entra ID Managed Identity, connection strings, AKS, and Azurite. |
+| [docs/observability.md](https://quarantine-py.aritro.cloud/observability/) | Wiring the hooks into Prometheus, Datadog, Sentry and plain logging. |
+| [docs/benchmarks.md](https://quarantine-py.aritro.cloud/benchmarks/) | What the decorator costs when nothing fails, with the methodology. |
+| [docs/troubleshooting.md](https://quarantine-py.aritro.cloud/troubleshooting/) | "It skipped my item", "retry says it cannot import", and friends. |
+| [docs/faq.md](https://quarantine-py.aritro.cloud/faq/) | Longer answers to the questions below. |
+| [docs/adr/](https://quarantine-py.aritro.cloud/adr/) | Architecture decision records: why rename-based atomicity, why not JSONL, why pickle-first, and friends. |
 | [CHANGELOG.md](https://github.com/halcyon-past/quarantine/blob/main/CHANGELOG.md) | What changed, and when. |
-| [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md) | What is coming next - more storage backends (GCS, Azure, Redis, Databricks) - and why. |
+| [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md) | What is coming next - more storage backends (Redis, Databricks) - and why. |
 | [SECURITY.md](https://github.com/halcyon-past/quarantine/blob/main/SECURITY.md) | Reporting vulnerabilities, the threat model, and the supply-chain posture. |
 | [CONTRIBUTING.md](https://github.com/halcyon-past/quarantine/blob/main/CONTRIBUTING.md) | Setup, the checks, and the ground rules for changes. |
 
@@ -452,10 +456,10 @@ Yes — that's exactly the pattern, ported from message-queue infrastructure to 
 `@quarantine` works on `async def` too.
 
 **Threads/processes?**
-Yes — safe under `threading`, `multiprocessing` and `concurrent.futures`. Writes are atomic, ids cannot collide, and the folder is append-only per item; the test suite proves it with real concurrent processes sharing one folder. Details in [docs/usage.md](https://github.com/halcyon-past/quarantine/blob/main/docs/usage.md).
+Yes — safe under `threading`, `multiprocessing` and `concurrent.futures`. Writes are atomic, ids cannot collide, and the folder is append-only per item; the test suite proves it with real concurrent processes sharing one folder. Details in [docs/usage.md](https://quarantine-py.aritro.cloud/usage/).
 
 ---
 
-**Created by [Aritro Saha](https://aritro.cloud)**
+**Created by [Aritro Saha](https://www.aritro.cloud)** · [Architecture Case Study](https://www.aritro.cloud/projects/quarantine) · [Engineering Deep-Dive](https://www.aritro.cloud/blog/python-dead-letter-queue-batch-pipelines)
 
 *Made for everyone whose overnight job died at item 5,247.*

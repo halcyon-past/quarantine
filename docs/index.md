@@ -1,7 +1,14 @@
-# quarantine — documentation
+---
+title: quarantine-py · Zero-Dependency Dead-Letter Queue & Loop Resilience for Python
+description: Prevent Python batch loops, ETL pipelines, and web scrapers from crashing on bad data. Isolate failures, keep loops running, and replay errors surgically. Developed by Aritro Saha.
+---
+
+# quarantine-py — documentation
 
 [← back to the README](https://github.com/halcyon-past/quarantine#readme) ·
 [package on PyPI](https://pypi.org/project/quarantine-py/) ·
+[architecture case study](https://www.aritro.cloud/projects/quarantine) ·
+[author portfolio](https://www.aritro.cloud/) ·
 [latest releases](https://github.com/halcyon-past/quarantine/releases)
 
 `quarantine` keeps a loop running when one item goes bad: the failure is written
@@ -18,7 +25,10 @@ to a folder — input, traceback, metadata — and you deal with it later.
 | [CLI reference](cli.md) | You are at a terminal with a folder full of failures. |
 | [API reference](api.md) | You are writing code against it. |
 | [On-disk format](on-disk-format.md) | You want to read, ship or process `.quarantine/` yourself. |
-| [Remote storage](remote-storage.md) | Your workers are ephemeral and the quarantine should live in S3. |
+| [Remote storage](remote-storage.md) | Your workers are ephemeral and the quarantine should live in S3, GCS, Azure Blob Storage, Redis, or Databricks Unity Catalog Volumes. |
+| [AWS S3 Guide](aws-s3.md) | Dedicated guide for AWS S3: IAM policies, IRSA, ECS, Lambda, and SSE-KMS. |
+| [Google Cloud Storage Guide](gcp-gcs.md) | Dedicated guide for Google Cloud Storage: ADC, GKE Workload Identity, CMEK, and fake-gcs-server. |
+| [Azure Blob Storage Guide](azure-blob.md) | Dedicated guide for Azure Blob Storage: Entra ID Managed Identity, AKS, RBAC, and Azurite. |
 | [Observability](observability.md) | You want failures on a dashboard: Prometheus, Datadog, Sentry, logging. |
 | [Benchmarks](benchmarks.md) | You want to know what the decorator costs before putting it in a hot loop. |
 | [Troubleshooting](troubleshooting.md) | Something surprised you. |
@@ -69,3 +79,13 @@ quarantine retry        # re-run only the failures
    everything. See [the circuit breaker](usage.md#the-circuit-breaker).
 5. **Secrets are scrubbed before the write, not after.** See
    [redacting secrets](usage.md#redacting-secrets).
+
+---
+
+## Author & Engineering Case Study
+
+`quarantine-py` is created and maintained by **[Aritro Saha](https://www.aritro.cloud)** (Software Engineer at Bristol Myers Squibb).
+
+- Read the in-depth **[Quarantine Project Case Study](https://www.aritro.cloud/projects/quarantine)** on Aritro's engineering portfolio.
+- Read the technical architecture breakdown: **[Architecting an In-Process Dead-Letter Queue (DLQ) in Python](https://www.aritro.cloud/blog/python-dead-letter-queue-batch-pipelines)**.
+- Connect via [GitHub (@halcyon-past)](https://github.com/halcyon-past) or [LinkedIn](https://linkedin.com/in/aritro-saha).

@@ -1,0 +1,62 @@
+# robots.txt for https://quarantine-py.aritro.cloud/
+# Specification: Keep in sync with /llms.txt and /ai.txt.
+# AI Crawlers & Answer Engines: See https://quarantine-py.aritro.cloud/llms.txt and https://quarantine-py.aritro.cloud/ai.txt
+
+User-agent: *
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+# ==============================================================================
+# AI Search & User-Fetch Crawlers (Explicitly Allowed for Answer Engine Citations)
+# ==============================================================================
+User-agent: OAI-SearchBot
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: ChatGPT-User
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: Claude-SearchBot
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: Claude-User
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: PerplexityBot
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: Perplexity-User
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+# ==============================================================================
+# AI Model Training Crawlers (Explicitly Allowed by Author Aritro Saha)
+# ==============================================================================
+User-agent: GPTBot
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: Google-Extended
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: anthropic-ai
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: Cohere-ai
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+User-agent: Applebot-Extended
+Allow: /
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+
+# ==============================================================================
+# Sitemaps
+# ==============================================================================
+Sitemap: https://quarantine-py.aritro.cloud/sitemap.xml

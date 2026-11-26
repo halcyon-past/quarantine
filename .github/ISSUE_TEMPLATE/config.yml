@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability Disclosure
+    url: https://github.com/halcyon-past/quarantine/security/policy
+    about: Please report security vulnerabilities privately via GitHub Security Advisories or our SECURITY.md policy.
+  - name: Documentation & Recipes
+    url: https://halcyon-past.github.io/quarantine/
+    about: Check the official documentation and guides before filing questions.

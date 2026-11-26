@@ -1,3 +1,8 @@
+---
+title: Practical Error Handling Examples & Failure Isolation
+description: Real-world examples showing how quarantine isolates failures in batch data pipelines, web scraping, and database loads with on-disk state.
+---
+
 # Practical Examples
 
 [← docs index](index.md)

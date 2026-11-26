@@ -80,6 +80,19 @@ def test_the_cap_is_released_by_clearing(q):
     assert is_quarantined(safe(3))
 
 
+def test_the_cap_is_released_by_external_clearing(q):
+    limited = q.replace(max_items=1, halt_after=None)
+    safe = limited.wrap(_always_fails)
+    safe(1)
+    with pytest.raises(QuarantineFull):
+        safe(2)
+    # External process removes the record files without limited.clear()
+    limited.store.clear()
+    assert limited._count == 1  # in-memory count was stale
+    assert is_quarantined(safe(3))
+    assert limited._count == 1  # re-synced and now has 1 item
+
+
 def test_retrying_frees_capacity(q, target_module):
     module = target_module(
         """

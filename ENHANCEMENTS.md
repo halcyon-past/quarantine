@@ -31,7 +31,7 @@ properly:
 | Zero runtime dependencies, full type hints, `py.typed`, strict mypy | [docs/installation.md](docs/installation.md), [ADR 0004](docs/adr/0004-zero-runtime-dependencies.md) |
 | Framework recipes: pandas ETL, web scraping, Airflow, FastAPI ([#43](https://github.com/halcyon-past/quarantine/issues/43)) | [docs/recipes.md](docs/recipes.md) |
 | Reproducible success-path benchmarks with pyperf ([#44](https://github.com/halcyon-past/quarantine/issues/44)) | [docs/benchmarks.md](docs/benchmarks.md) |
-| Pluggable storage backends with S3 built in ([#11](https://github.com/halcyon-past/quarantine/issues/11)): `dir="s3://bucket/prefix"`, `quarantine-py[s3]`, public `StorageBackend` interface | [docs/remote-storage.md](docs/remote-storage.md) |
+| Pluggable storage backends with S3, GCS, and Azure Blob Storage built in ([#11](https://github.com/halcyon-past/quarantine/issues/11), [#53](https://github.com/halcyon-past/quarantine/issues/53), [#54](https://github.com/halcyon-past/quarantine/issues/54)): `s3://`, `gs://`, `azure://`, `quarantine-py[azure]`, public `StorageBackend` interface | [docs/remote-storage.md](docs/remote-storage.md) |
 | Architecture decision records | [docs/adr/](docs/adr/README.md) |
 | Security policy, SHA-pinned CI, trusted publishing with attestations | [SECURITY.md](SECURITY.md) |
 
@@ -44,10 +44,13 @@ The docs are built with mkdocs-material and deployed on every merge.
 
 ## 1. More storage backends
 
-The backend interface and the S3 backend shipped
+The backend interface, S3, GCS, and Azure Blob Storage backends shipped
 ([#11](https://github.com/halcyon-past/quarantine/issues/11),
-[docs/remote-storage.md](docs/remote-storage.md)): `dir="s3://bucket/prefix"`
-gives a fleet one shared quarantine, ids are claimed with conditional writes,
+[#53](https://github.com/halcyon-past/quarantine/issues/53),
+[#54](https://github.com/halcyon-past/quarantine/issues/54),
+[docs/remote-storage.md](docs/remote-storage.md)): `dir="s3://bucket/prefix"`,
+`dir="gs://bucket/prefix"`, and `dir="azure://container/prefix"`
+give a fleet one shared quarantine, ids are claimed with conditional writes,
 and `meta.json` uploaded last is the commit point
 ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). What remains is
 more built-in schemes, each an optional extra that pulls in only its own
@@ -55,8 +58,6 @@ client library:
 
 | Backend | URL form | Notes |
 |---|---|---|
-| Google Cloud Storage | `gs://bucket/prefix` | Same object layout and commit protocol as S3 (`If-None-Match` is supported there too). `quarantine-py[gcs]`. |
-| Azure Blob Storage | `azure://container/prefix` | Same object layout and commit protocol as S3. `quarantine-py[azure]`. |
 | Redis | `redis://host:6379/0` | Not an object store: hash-per-record with `SETNX` id allocation and optional TTL, in its own ADR. `quarantine-py[redis]`. |
 | Databricks | `/Volumes/catalog/schema/volume/quarantine` | Unity Catalog volumes, so quarantined items are governed and shareable next to the data they came from. `quarantine-py[databricks]`. |
 

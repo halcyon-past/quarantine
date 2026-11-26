@@ -1,3 +1,8 @@
+---
+title: "Python Dead-Letter Queue FAQ: quarantine vs try/except & DLQs"
+description: Frequently asked questions about quarantine-py, dead-letter queue concepts, async support, threading, multiprocessing, and poison pill prevention.
+---
+
 # FAQ
 
 [← docs index](index.md)

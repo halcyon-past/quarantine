@@ -7,6 +7,8 @@ console that cannot encode ``✓`` gets ASCII instead of a traceback.
 from __future__ import annotations
 
 import argparse
+import asyncio
+import inspect
 import json
 import shutil
 import sys
@@ -129,6 +131,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     ui = subs.add_parser("ui", help="start a local web dashboard to view records")
     _add_dir(ui)
+    ui.add_argument(
+        "--host", default="127.0.0.1", help="host interface to bind to (default: 127.0.0.1)"
+    )
     ui.add_argument("--port", type=int, default=8080, help="port to bind to (default: 8080)")
     ui.set_defaults(handler=cmd_ui)
 
@@ -360,7 +365,13 @@ def _post_mortem(target: Callable[..., Any], call: Any) -> int:
 
     out("re-running the failing call; you will land in the frame that raised.")
     try:
-        target(*call.args, **call.kwargs)
+        outcome = target(*call.args, **call.kwargs)
+        if inspect.isawaitable(outcome):
+
+            async def _await_outcome() -> Any:
+                return await outcome
+
+            asyncio.run(_await_outcome())
     except Exception:  # noqa: BLE001 - reproducing the failure is the whole point
         pdb.post_mortem(sys.exc_info()[2])
         return EXIT_OK
@@ -493,7 +504,7 @@ def cmd_reindex(args: argparse.Namespace) -> int:
 
 def cmd_ui(args: argparse.Namespace) -> int:
     """Start the local web dashboard."""
-    return start_server(args.port, coerce_dir(args.dir) if args.dir else None)
+    return start_server(args.port, coerce_dir(args.dir) if args.dir else None, host=args.host)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
