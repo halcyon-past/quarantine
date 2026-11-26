@@ -850,7 +850,12 @@ class _MiniRespServer:
         args = parts[1:]
         if cmd == "PING":
             return b"+PONG\r\n"
-        if cmd in {"SELECT", "CLIENT"}:
+        if cmd == "HELLO":
+            return (
+                b"*6\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
+                b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:2\r\n"
+            )
+        if cmd in {"SELECT", "CLIENT", "WATCH", "UNWATCH"}:
             return b"+OK\r\n"
         handlers = {
             "SCAN": self._cmd_scan,

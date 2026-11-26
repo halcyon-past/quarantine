@@ -49,6 +49,7 @@ __all__ = ["RedisStore"]
 
 MAX_ID_ATTEMPTS = 64
 DEFAULT_PREFIX = "quarantine"
+_DELETE_BATCH = 1000
 _USERINFO_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*://)([^/@]*@)")
 
 _INDEX_FIELDS = (
@@ -333,22 +334,23 @@ class RedisStore(StorageBackend):
     def _write_cache(
         self, record_id: int, files: dict[str, bytes], *, replace: bool = False
     ) -> Path:
-        if replace:
-            stale = self._cache / f"{record_id:04d}"
-            if stale.is_symlink():
-                raise StorageError(f"cache record directory is an unsafe symlink: {stale}")
-            shutil.rmtree(stale, ignore_errors=True)
-        target = self._safe_target_dir(record_id)
-        for name, data in files.items():
-            if not _is_safe_filename(name):
-                continue
-            dest = target / name
-            if dest.is_symlink():
-                raise StorageError(f"cache destination cannot be a symlink: {dest}")
-            if not dest.resolve().is_relative_to(target):
-                continue
-            _safe_write_cache_file(target, name, data)
-        return target
+        with self._mutex:
+            if replace:
+                stale = self._cache / f"{record_id:04d}"
+                if stale.is_symlink():
+                    raise StorageError(f"cache record directory is an unsafe symlink: {stale}")
+                shutil.rmtree(stale, ignore_errors=True)
+            target = self._safe_target_dir(record_id)
+            for name, data in files.items():
+                if not _is_safe_filename(name):
+                    continue
+                dest = target / name
+                if dest.is_symlink():
+                    raise StorageError(f"cache destination cannot be a symlink: {dest}")
+                if not dest.resolve().is_relative_to(target):
+                    continue
+                _safe_write_cache_file(target, name, data)
+            return target
 
     def get(self, record_id: int) -> Record:
         """Fetch one record into the local cache and load it."""
@@ -480,14 +482,20 @@ class RedisStore(StorageBackend):
 
     # -- deleting ---------------------------------------------------------
 
+    def _delete_keys(self, keys: list[str], *, action: str) -> None:
+        for start in range(0, len(keys), _DELETE_BATCH):
+            batch = keys[start : start + _DELETE_BATCH]
+            try:
+                self._client.delete(*batch)
+            except self._client_error as exc:
+                raise self._wrap(action, exc) from exc
+
     def delete(self, record: Record | int) -> None:
         """Remove one record's hash (and its cache entry)."""
         record_id = record if isinstance(record, int) else record.id
-        try:
-            self._client.delete(self._record_key(record_id))
-        except self._client_error as exc:
-            raise self._wrap(f"delete record {record_id}", exc) from exc
-        shutil.rmtree(self._cache / f"{record_id:04d}", ignore_errors=True)
+        self._delete_keys([self._record_key(record_id)], action=f"delete record {record_id}")
+        with self._mutex:
+            shutil.rmtree(self._cache / f"{record_id:04d}", ignore_errors=True)
 
     def clear(self) -> int:
         """Delete every record and reset the id counter under the prefix."""
@@ -496,11 +504,9 @@ class RedisStore(StorageBackend):
         removed = sum(
             1 for present in self._committed_mask(ordered_keys, action="clear records") if present
         )
-        try:
-            self._client.delete(*ordered_keys, self._next_id_key())
-        except self._client_error as exc:
-            raise self._wrap("clear records", exc) from exc
-        shutil.rmtree(self._cache, ignore_errors=True)
+        self._delete_keys([*ordered_keys, self._next_id_key()], action="clear records")
+        with self._mutex:
+            shutil.rmtree(self._cache, ignore_errors=True)
         return removed
 
     def purge_temp(self) -> int:
@@ -512,10 +518,7 @@ class RedisStore(StorageBackend):
         mask = self._committed_mask(ordered_keys, action="purge temp records")
         stale = [key for key, present in zip(ordered_keys, mask, strict=True) if not present]
         if stale:
-            try:
-                self._client.delete(*stale)
-            except self._client_error as exc:
-                raise self._wrap("purge temp records", exc) from exc
+            self._delete_keys(stale, action="purge temp records")
         return len(stale)
 
     # -- the index --------------------------------------------------------

@@ -704,8 +704,9 @@ def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBacken
     if scheme not in _BACKENDS and scheme in {"redis", "rediss"}:
         from .redis_store import RedisStore  # noqa: PLC0415 - deferred so redis stays optional
 
-        _BACKENDS.setdefault("redis", RedisStore)
-        _BACKENDS.setdefault("rediss", RedisStore)
+        for redis_scheme in ("redis", "rediss"):
+            if redis_scheme not in _BACKENDS:
+                register_backend(redis_scheme, RedisStore)
 
     factory = _BACKENDS.get(scheme)
     if factory is None:

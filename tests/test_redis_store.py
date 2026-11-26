@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from redis.exceptions import RedisError
+from redis.exceptions import RedisError, WatchError
 
 from quarantine import Quarantine, StorageBackend, open_store, quarantine, register_backend, retry
 from quarantine.cli import main
@@ -42,17 +42,22 @@ class FakeRedisPipeline:
         self._client = client
         self._transaction = transaction
         self._ops: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+        self._watched: dict[str, int] = {}
 
     def __enter__(self) -> FakeRedisPipeline:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
         self._ops.clear()
+        self._watched.clear()
 
     def watch(self, *keys: str) -> bool:
+        for key in keys:
+            self._watched[key] = self._client.version_of(key)
         return True
 
     def unwatch(self) -> bool:
+        self._watched.clear()
         return True
 
     def multi(self) -> None:
@@ -78,10 +83,16 @@ class FakeRedisPipeline:
         return self
 
     def execute(self) -> list[Any]:
+        for key, version in self._watched.items():
+            if self._client.version_of(key) != version:
+                self._ops.clear()
+                self._watched.clear()
+                raise WatchError("Watched variable changed.")
         results: list[Any] = []
         for name, args, kwargs in self._ops:
             results.append(getattr(self._client, name)(*args, **kwargs))
         self._ops.clear()
+        self._watched.clear()
         return results
 
 
@@ -93,7 +104,13 @@ class FakeRedisClient:
         self._hashes: dict[str, dict[bytes, bytes]] = {}
         self._strings: dict[str, int] = {}
         self._expires: dict[str, float] = {}
+        self._versions: dict[str, int] = {}
         self.now_offset: float = 0.0
+
+    def version_of(self, key: str) -> int:
+        with self._lock:
+            self._purge_if_expired(key)
+            return self._versions.get(key, 0)
 
     def _now(self) -> float:
         return time.monotonic() + self.now_offset
@@ -124,6 +141,7 @@ class FakeRedisClient:
     ) -> int:
         with self._lock:
             self._purge_if_expired(key)
+            self._versions[key] = self._versions.get(key, 0) + 1
             bucket = self._hashes.setdefault(key, {})
             added = 0
             if mapping is not None:
@@ -642,6 +660,30 @@ def test_redis_errors_are_wrapped_as_storage_error(fake_redis):
     fake_redis.scan_iter = boom
     with pytest.raises(StorageError, match="cannot list records"):
         s.records()
+
+
+def test_watch_error_raises_storage_error(store, fake_redis, redis_url, module):
+    q = Quarantine(redis_url, halt_after=None, report=False)
+    q.call(module.load, "bad")
+    rec = store.get(1)
+
+    orig_pipeline = fake_redis.pipeline
+
+    class RacingPipeline(FakeRedisPipeline):
+        def watch(self, *keys: str) -> bool:
+            super().watch(*keys)
+            # Simulate another worker modifying the record right after WATCH
+            fake_redis.hset(keys[0], "other", b"race")
+            return True
+
+    fake_redis.pipeline = lambda transaction=False: RacingPipeline(
+        fake_redis, transaction=transaction
+    )
+    try:
+        with pytest.raises(StorageError, match="changed concurrently"):
+            store.update(rec)
+    finally:
+        fake_redis.pipeline = orig_pipeline
 
 
 def test_cache_security_and_stale_file_cleanup(store, fake_redis, tmp_path):
