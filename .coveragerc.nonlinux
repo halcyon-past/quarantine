@@ -1,6 +1,5 @@
 [run]
 source = quarantine
-branch = true
 parallel = true
 
 [paths]
