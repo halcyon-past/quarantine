@@ -7,7 +7,14 @@ from collections.abc import AsyncIterator, Callable, Iterable, Iterator, Sequenc
 from pathlib import Path
 from typing import Any, TypeVar, overload
 
-from .core import DEFAULT_HALT_AFTER, DEFAULT_MAX_ITEMS, Config, Quarantine, RetryResult
+from .core import (
+    DEFAULT_HALT_AFTER,
+    DEFAULT_MAX_ITEMS,
+    Config,
+    Quarantine,
+    RetryResult,
+    _reject_generator,
+)
 from .record import Record
 from .sentinels import QUARANTINED, SKIPPED
 from .store import coerce_dir
@@ -76,7 +83,10 @@ def get_quarantine(
         verbose=verbose,
     )
     with _registry_lock:
-        instance = _registry.get(config)
+        try:
+            instance = _registry.get(config)
+        except TypeError:
+            return Quarantine(config=config)
         if instance is None:
             instance = Quarantine(config=config)
             _registry[config] = instance
@@ -234,7 +244,18 @@ def shield(
             "A generator cannot protect the body of your for-loop, only the "
             "callable it hands work to."
         )
+    if not callable(using):
+        raise TypeError(f"shield() expects a callable, got {type(using).__name__}")
+    _reject_generator(using)
     instance = get_quarantine(**options)
+    return _shield_iter(items, using, instance)
+
+
+def _shield_iter(
+    items: Iterable[Any],
+    using: Callable[..., Any],
+    instance: Quarantine,
+) -> Iterator[Any]:
     for item in items:
         outcome = instance.call(using, item)
         if outcome is QUARANTINED or outcome is SKIPPED:
@@ -242,7 +263,7 @@ def shield(
         yield outcome
 
 
-async def ashield(
+def ashield(
     items: Any,
     using: Callable[..., Any] | None = None,
     **options: Any,
@@ -250,7 +271,18 @@ async def ashield(
     """``async`` counterpart of :func:`shield`, over a sync or async iterable."""
     if using is None:
         raise TypeError("ashield() needs something to run: ashield(items, using=process)")
+    if not callable(using):
+        raise TypeError(f"ashield() expects a callable, got {type(using).__name__}")
+    _reject_generator(using)
     instance = get_quarantine(**options)
+    return _ashield_iter(items, using, instance)
+
+
+async def _ashield_iter(
+    items: Any,
+    using: Callable[..., Any],
+    instance: Quarantine,
+) -> AsyncIterator[Any]:
     if hasattr(items, "__aiter__"):
         async for item in items:
             outcome = await instance.acall(using, item)
