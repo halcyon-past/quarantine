@@ -259,7 +259,7 @@ class AzureBlobStore(StorageBackend):
             for blob in blobs:
                 tail = blob.name[len(self._list_prefix()) :]
                 dirname, _, filename = tail.partition("/")
-                if dirname.isdigit() and filename:
+                if dirname.isascii() and dirname.isdigit() and filename:
                     out.setdefault(int(dirname), {})[filename] = blob.size or 0
         except self._azure_error as exc:
             raise self._wrap("list records", exc) from exc
@@ -305,22 +305,30 @@ class AzureBlobStore(StorageBackend):
 
     def _materialise(self, record_id: int, filenames: Iterable[str]) -> Path:
         """Download one record's files into the local cache, returning its directory."""
-        target = self._safe_target_dir(record_id)
-        for name in filenames:
-            if name == CLAIM_NAME or not _is_safe_filename(name):
-                continue
-            dest = target / name
-            if dest.is_symlink():
-                raise StorageError(f"cache destination cannot be a symlink: {dest}")
-            if not dest.resolve().is_relative_to(target):
-                continue
-            try:
-                blob_client = self._container_client.get_blob_client(self._key(record_id, name))
-                data = blob_client.download_blob().readall()
-            except self._azure_error as exc:
-                raise self._wrap(f"download record {record_id}", exc) from exc
-            _safe_write_cache_file(target, name, data)
-        return target
+        with self._mutex:
+            expected = {n for n in filenames if n != CLAIM_NAME and _is_safe_filename(n)}
+            target = self._safe_target_dir(record_id)
+            for existing in list(target.iterdir()):
+                if existing.name not in expected and not existing.is_symlink():
+                    if existing.is_dir():
+                        shutil.rmtree(existing, ignore_errors=True)
+                    else:
+                        existing.unlink(missing_ok=True)
+            for name in filenames:
+                if name == CLAIM_NAME or not _is_safe_filename(name):
+                    continue
+                dest = target / name
+                if dest.is_symlink():
+                    raise StorageError(f"cache destination cannot be a symlink: {dest}")
+                if not dest.resolve().is_relative_to(target):
+                    continue
+                try:
+                    blob_client = self._container_client.get_blob_client(self._key(record_id, name))
+                    data = blob_client.download_blob().readall()
+                except self._azure_error as exc:
+                    raise self._wrap(f"download record {record_id}", exc) from exc
+                _safe_write_cache_file(target, name, data)
+            return target
 
     def get(self, record_id: int) -> Record:
         """Fetch one record into the cache and load it."""
@@ -411,20 +419,27 @@ class AzureBlobStore(StorageBackend):
         return record
 
     def _write_cache(self, record_id: int, files: dict[str, bytes]) -> Path:
-        target = self._safe_target_dir(record_id)
-        for name, data in files.items():
-            if not _is_safe_filename(name):
-                continue
-            dest = target / name
-            if dest.is_symlink():
-                raise StorageError(f"cache destination cannot be a symlink: {dest}")
-            if not dest.resolve().is_relative_to(target):
-                continue
-            _safe_write_cache_file(target, name, data)
-        return target
+        with self._mutex:
+            target = self._safe_target_dir(record_id)
+            for name, data in files.items():
+                if not _is_safe_filename(name):
+                    continue
+                dest = target / name
+                if dest.is_symlink():
+                    raise StorageError(f"cache destination cannot be a symlink: {dest}")
+                if not dest.resolve().is_relative_to(target):
+                    continue
+                _safe_write_cache_file(target, name, data)
+            return target
+
+    def _require_exists(self, record_id: int) -> None:
+        files = self._list_objects().get(record_id)
+        if not files or META_NAME not in files:
+            raise StorageError(f"no record {record_id} in {self.dir}")
 
     def update(self, record: Record) -> None:
         """Rewrite ``meta.json`` for an existing record."""
+        self._require_exists(record.id)
         try:
             self._put(self._key(record.id, META_NAME), _encode_meta(record))
         except self._azure_error as exc:
@@ -437,6 +452,7 @@ class AzureBlobStore(StorageBackend):
         """Replace a record's stored traceback (used when a retry fails again)."""
         import traceback as tb  # noqa: PLC0415 - keep the module namespace tidy
 
+        self._require_exists(record.id)
         text = "".join(tb.format_exception(type(exc), exc, exc.__traceback__)).encode("utf-8")
         try:
             self._put(self._key(record.id, TRACEBACK_NAME), text)
@@ -465,7 +481,11 @@ class AzureBlobStore(StorageBackend):
         record_id = record if isinstance(record, int) else record.id
         files = self._list_objects().get(record_id, {})
         self._delete_keys([self._key(record_id, name) for name in files])
-        shutil.rmtree(self._cache / f"{record_id:04d}", ignore_errors=True)
+        with self._mutex:
+            if not self._cache.is_symlink():
+                target = self._cache / f"{record_id:04d}"
+                if not target.is_symlink():
+                    shutil.rmtree(target, ignore_errors=True)
 
     def clear(self) -> int:
         """Delete every record under the prefix. Returns how many were committed."""
@@ -475,8 +495,10 @@ class AzureBlobStore(StorageBackend):
             self._key(record_id, name) for record_id, files in listing.items() for name in files
         ]
         self._delete_keys(keys)
-        shutil.rmtree(self._cache, ignore_errors=True)
-        self._id_hint = 0
+        with self._mutex:
+            if not self._cache.is_symlink():
+                shutil.rmtree(self._cache, ignore_errors=True)
+            self._id_hint = 0
         return removed
 
     def purge_temp(self) -> int:
@@ -524,6 +546,7 @@ def _is_safe_filename(name: str) -> bool:
     """Return whether ``name`` is a single safe basename with no path traversal."""
     return (
         bool(name)
+        and "\x00" not in name
         and "/" not in name
         and "\\" not in name
         and name not in {".", ".."}

@@ -107,14 +107,29 @@ def deserialize(fmt: str, data: bytes) -> Call:
     if fmt == PICKLE:
         payload = pickle.loads(data)
     elif fmt == JSON:
-        payload = json.loads(data.decode("utf-8"))
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"malformed JSON payload: {exc}") from exc
     else:
         raise ValueError(f"cannot rebuild the input from format {fmt!r} (repr is not reversible)")
     if not isinstance(payload, dict):
         # ValueError, not TypeError: the *file* is malformed, the argument is fine.
         raise ValueError("malformed payload: expected a mapping")  # noqa: TRY004
-    args = tuple(payload.get("args") or ())
-    kwargs = dict(payload.get("kwargs") or {})
+    raw_args = payload.get("args")
+    if raw_args is None:
+        args: tuple[Any, ...] = ()
+    elif isinstance(raw_args, (list, tuple)):
+        args = tuple(raw_args)
+    else:
+        raise ValueError("malformed payload: 'args' must be a list or tuple")
+    raw_kwargs = payload.get("kwargs")
+    if raw_kwargs is None:
+        kwargs: dict[str, Any] = {}
+    elif isinstance(raw_kwargs, dict):
+        kwargs = dict(raw_kwargs)
+    else:
+        raise ValueError("malformed payload: 'kwargs' must be a mapping")
     return Call(args, kwargs)
 
 
@@ -132,9 +147,13 @@ def safe_repr(obj: Any, limit: int = REPR_LIMIT) -> str:
 
 def preview(call: Call, limit: int = PREVIEW_LIMIT) -> str:
     """One-line, single-space preview of the input for table output."""
+    if limit <= 0:
+        return ""
     text = safe_repr(call.item, limit * 4)
     collapsed = " ".join(text.split())
     if len(collapsed) > limit:
+        if limit == 1:
+            return "\u2026"
         return collapsed[: limit - 1] + "\u2026"
     return collapsed
 

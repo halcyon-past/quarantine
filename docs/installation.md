@@ -58,12 +58,12 @@ Pin it like any other library:
 
 ```
 # requirements.txt
-quarantine-py~=0.1
+quarantine-py~=2.1
 ```
 
 ```toml
 # pyproject.toml
-dependencies = ["quarantine-py>=0.1,<0.2"]
+dependencies = ["quarantine-py>=2.1,<3.0"]
 ```
 
 ## Install from conda-forge

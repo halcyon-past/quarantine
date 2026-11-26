@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import importlib.util
 import os
 import sys
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -21,6 +23,7 @@ __all__ = [
 ]
 
 _SCRIPT_PREFIX = "_quarantine_target_"
+_IMPORT_LOCK = threading.Lock()
 
 
 class ResolutionError(QuarantineError):
@@ -57,25 +60,29 @@ def load_module_from_path(path: str | os.PathLike[str]) -> ModuleType:
     if not resolved.is_file():
         raise ResolutionError(f"{resolved} is not a file")
 
-    name = f"{_SCRIPT_PREFIX}{resolved.stem}"
+    digest = hashlib.blake2b(
+        str(resolved.resolve()).encode("utf-8", "replace"), digest_size=6
+    ).hexdigest()
+    name = f"{_SCRIPT_PREFIX}{resolved.stem}_{digest}"
     spec = importlib.util.spec_from_file_location(name, resolved)
     if spec is None or spec.loader is None:
         raise ResolutionError(f"cannot import {resolved}: not an importable Python file")
 
     module = importlib.util.module_from_spec(spec)
     parent = str(resolved.parent)
-    added = parent not in sys.path
-    if added:
-        sys.path.insert(0, parent)  # so the script's sibling imports still work
-    sys.modules[name] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception as exc:
-        sys.modules.pop(name, None)
-        raise ResolutionError(f"cannot import {resolved}: {type(exc).__name__}: {exc}") from exc
-    finally:
-        if added and parent in sys.path:
-            sys.path.remove(parent)
+    with _IMPORT_LOCK:
+        added = parent not in sys.path
+        if added:
+            sys.path.insert(0, parent)  # so the script's sibling imports still work
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise ResolutionError(f"cannot import {resolved}: {type(exc).__name__}: {exc}") from exc
+        finally:
+            if added and parent in sys.path:
+                sys.path.remove(parent)
     return module
 
 
@@ -112,8 +119,13 @@ def resolve_function(
     else:
         module = _import_named(module_name, qualname, source_file)
 
+    parts = qualname.split(".")
+    for part in parts:
+        if not part.isidentifier() or (part.startswith("__") and part.endswith("__")):
+            raise ResolutionError(f"refusing unsafe attribute path {qualname!r}")
+
     target: Any = module
-    for part in qualname.split("."):
+    for part in parts:
         try:
             target = getattr(target, part)
         except AttributeError:

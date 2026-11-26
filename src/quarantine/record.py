@@ -86,8 +86,18 @@ class Record:
         kwargs.setdefault("source_file", "")
         kwargs.setdefault("error_type", "Exception")
         kwargs.setdefault("error", "")
-        kwargs.setdefault("created_at", "")
-        kwargs.setdefault("last_failed_at", kwargs.get("created_at", ""))
+        if kwargs.get("created_at") is None:
+            kwargs["created_at"] = ""
+        if kwargs.get("last_failed_at") is None:
+            kwargs["last_failed_at"] = kwargs["created_at"]
+        if kwargs.get("attempts") is None:
+            kwargs["attempts"] = 1
+        else:
+            try:
+                kwargs["attempts"] = int(kwargs["attempts"])
+            except (ValueError, TypeError) as exc:
+                msg = f"{path or 'record'}: invalid attempts: {data.get('attempts')!r}"
+                raise StorageError(msg) from exc
         record = cls(**kwargs)
         record.path = path
         return record
@@ -97,7 +107,7 @@ class Record:
         """Read a record directory from disk."""
         meta_path = path / META_NAME
         try:
-            raw = meta_path.read_text(encoding="utf-8")
+            raw = meta_path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             raise StorageError(f"cannot read {meta_path}: {exc}") from exc
         try:
@@ -124,7 +134,9 @@ class Record:
     @property
     def when(self) -> str:
         """Wall-clock time of the last failure, ``HH:MM:SS``, for table output."""
-        stamp = self.last_failed_at or self.created_at
+        stamp = self.last_failed_at or self.created_at or ""
+        if not stamp:
+            return ""
         try:
             parsed = datetime.fromisoformat(stamp)
         except ValueError:

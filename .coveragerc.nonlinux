@@ -1,4 +1,21 @@
+[run]
+source = quarantine
+branch = true
+parallel = true
+
+[paths]
+source =
+    src/quarantine
+    */site-packages/quarantine
+
 [report]
+show_missing = true
+skip_covered = true
 fail_under = 90
 omit =
     */gcs_store.py
+exclude_lines =
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    @overload
+    if sys.version_info

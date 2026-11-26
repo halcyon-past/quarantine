@@ -32,6 +32,7 @@ NEVER_QUARANTINE: tuple[type[BaseException], ...] = (
     KeyboardInterrupt,
     SystemExit,
     GeneratorExit,
+    asyncio.CancelledError,
     QuarantineError,
 )
 """Exceptions that always propagate, whatever ``only`` says.
@@ -222,6 +223,7 @@ class Quarantine:
         self._mutex = threading.RLock()
         self._known: dict[str, int] | None = None
         self._count: int | None = None
+        self._pending_adds: int = 0
         if config.report:
             register_reporter(self)
 
@@ -245,7 +247,12 @@ class Quarantine:
             raise TypeError(f"@quarantine expects a callable, got {type(fn).__name__}")
         _reject_generator(fn)
 
-        if inspect.iscoroutinefunction(fn):
+        is_async = inspect.iscoroutinefunction(fn) or (
+            not inspect.isfunction(fn)
+            and not inspect.ismethod(fn)
+            and inspect.iscoroutinefunction(type(fn).__call__)
+        )
+        if is_async:
 
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -338,18 +345,22 @@ class Quarantine:
 
     def summary_line(self) -> str | None:
         """The end-of-run one-liner, or ``None`` when there is nothing to report."""
-        stats = self.stats
-        if not (stats.quarantined or stats.skipped or stats.recovered):
+        with self._mutex:
+            processed = self.stats.processed
+            quarantined = self.stats.quarantined
+            skipped = self.stats.skipped
+            recovered = self.stats.recovered
+        if not (quarantined or skipped or recovered):
             return None
-        parts = [f"✓ {stats.processed:,} processed"]
-        if stats.quarantined:
-            parts.append(f"✗ {stats.quarantined:,} quarantined → {self.dir}/")
-        if stats.skipped:
-            parts.append(f"⏭ {stats.skipped:,} skipped (already quarantined)")
-        if stats.recovered:
-            parts.append(f"↺ {stats.recovered:,} recovered")
+        parts = [f"✓ {processed:,} processed"]
+        if quarantined:
+            parts.append(f"✗ {quarantined:,} quarantined → {self.dir}/")
+        if skipped:
+            parts.append(f"⏭ {skipped:,} skipped (already quarantined)")
+        if recovered:
+            parts.append(f"↺ {recovered:,} recovered")
         line = " · ".join(parts)
-        if stats.quarantined or stats.skipped:
+        if quarantined or skipped:
             line += "  (run `quarantine retry` after fixing)"
         return line
 
@@ -519,10 +530,9 @@ class Quarantine:
         self.store.delete(record)
         with self._mutex:
             self.stats.recovered += 1
-            if self._count is not None:
-                self._count = max(0, self._count - 1)
-            if self._known is not None:
-                self._known.pop(record.fingerprint, None)
+            self._count = None
+            if self._known is not None and self._known.get(record.fingerprint) == record.id:
+                self._known = None
         result.recovered.append(record.id)
         self._fire_hook("on_retry_success", self.config.on_retry_success, record)
 
@@ -587,40 +597,49 @@ class Quarantine:
         call: Call,
         marker: Any,
     ) -> Record:
-        self._check_capacity(exc)
-        name = _name_of(fn)
-        redactor = self._redactor()
-        clean = redact_call(call, redactor)
-        record = self.store.add(
-            function=name,
-            module=getattr(fn, "__module__", "") or "",
-            fingerprint=marker
-            if isinstance(marker, str)
-            else fingerprint_source(name, call, redactor),
-            source_file=_source_file_of(fn),
-            exc=exc,
-            serialized=serialize(clean),
-            input_text=render_input_text(name, clean),
-            preview=preview(clean),
-            redacted=redactor.hits,
-        )
+        reserved = self._reserve_capacity(exc)
+        try:
+            name = _name_of(fn)
+            redactor = self._redactor()
+            clean = redact_call(call, redactor)
+            record = self.store.add(
+                function=name,
+                module=getattr(fn, "__module__", "") or "",
+                fingerprint=marker
+                if isinstance(marker, str)
+                else fingerprint_source(name, call, redactor),
+                source_file=_source_file_of(fn),
+                exc=exc,
+                serialized=serialize(clean),
+                input_text=render_input_text(name, clean),
+                preview=preview(clean),
+                redacted=redactor.hits,
+            )
+        except BaseException:
+            if reserved:
+                with self._mutex:
+                    self._pending_adds = max(0, self._pending_adds - 1)
+            raise
         with self._mutex:
+            if reserved:
+                self._pending_adds = max(0, self._pending_adds - 1)
             if self._count is not None:
                 self._count += 1
             if self._known is not None:
                 self._known[record.fingerprint] = record.id
         return record
 
-    def _check_capacity(self, exc: BaseException) -> None:
+    def _reserve_capacity(self, exc: BaseException) -> bool:
         limit = self.config.max_items
         if limit is None:
-            return
+            return False
         with self._mutex:
-            if self._count is None or self._count >= limit:
+            if self._count is None or (self._count + self._pending_adds) >= limit:
                 self._count = self.store.count()
-            full = self._count >= limit
-        if full:
-            raise QuarantineFull(limit, str(self.dir)) from exc
+            if (self._count + self._pending_adds) >= limit:
+                raise QuarantineFull(limit, str(self.dir)) from exc
+            self._pending_adds += 1
+            return True
 
     def _notify(self, record: Record) -> None:
         if self.config.verbose:

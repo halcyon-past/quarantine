@@ -2,6 +2,7 @@
 
 import html
 import http.server
+import socket
 import urllib.parse
 from pathlib import Path
 
@@ -9,35 +10,52 @@ from . import api
 from .reporting import emit, warn
 from .store import default_dir
 
+_HTTP_DEFAULT_PORT = 80
+_ERROR_PREVIEW_LEN = 50
+
 
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
     """Handles HTTP requests for the local quarantine dashboard."""
 
     quarantine_dir: Path | str | None = None
 
-    def _validate_csrf(self) -> bool:
-        """Validate Host, Origin, and Referer headers against DNS rebinding and CSRF."""
+    def _validate_host(self) -> tuple[bool, set[str]]:
+        """Validate Host header against DNS rebinding and compute allowed origins."""
         host_header = self.headers.get("Host")
-        if not host_header:
-            return False
+        if not host_header or any(ch.isspace() for ch in host_header):
+            return False, set()
 
         addr = self.server.server_address
         if isinstance(addr, tuple):
             server_host, server_port = str(addr[0]), int(addr[1])
         else:
             server_host, server_port = "127.0.0.1", 8080
-        allowed_hosts = {
-            f"{server_host}:{server_port}",
-            str(server_host),
-            "127.0.0.1",
-            f"127.0.0.1:{server_port}",
-            "localhost",
-            f"localhost:{server_port}",
-        }
-        if server_host in {"0.0.0.0", ""}:  # noqa: S104
-            allowed_hosts.add(host_header.lower())
-            allowed_hosts.add(host_header.split(":")[0].lower())
-        elif host_header.lower() not in allowed_hosts:
+
+        if server_host in {"0.0.0.0", "", "::"}:  # noqa: S104
+            return True, {host_header.lower()}
+
+        formatted_host = (
+            f"[{server_host}]"
+            if ":" in server_host and not server_host.startswith("[")
+            else server_host
+        ).lower()
+        hosts = {formatted_host, "127.0.0.1", "localhost", "[::1]"}
+        allowed_hosts = {f"{h}:{server_port}" for h in hosts}
+        if server_port == _HTTP_DEFAULT_PORT:
+            allowed_hosts.update(hosts)
+
+        if host_header.lower() not in allowed_hosts:
+            return False, set()
+        return True, allowed_hosts
+
+    def _validate_csrf(self) -> bool:
+        """Validate Host, Sec-Fetch-Site, Origin, and Referer headers."""
+        ok, allowed_hosts = self._validate_host()
+        if not ok:
+            return False
+
+        sec_fetch_site = self.headers.get("Sec-Fetch-Site")
+        if sec_fetch_site and sec_fetch_site.lower() not in {"same-origin", "none"}:
             return False
 
         origin = self.headers.get("Origin")
@@ -54,20 +72,39 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
         return True
 
+    def _send_security_headers(self) -> None:
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+        )
+        self.send_header("X-Content-Type-Options", "nosniff")
+
     def do_GET(self) -> None:
         """Handle GET requests for viewing records."""
+        ok, _ = self._validate_host()
+        if not ok:
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self._send_security_headers()
+            self.end_headers()
+            self.wfile.write(b"Forbidden: invalid Host header")
+            return
+
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path in {"/", ""}:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(self._render_index().encode("utf-8"))
         elif parsed.path == "/record":
             query = urllib.parse.parse_qs(parsed.query)
             ids = query.get("id")
-            if not ids or not ids[0].isdigit():
+            if not ids or not ids[0].isascii() or not ids[0].isdigit():
                 self.send_response(400)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self._send_security_headers()
                 self.end_headers()
                 self.wfile.write(b"Bad Request: missing or invalid record id")
                 return
@@ -76,16 +113,19 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             if content == "Record not found":
                 self.send_response(404)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self._send_security_headers()
                 self.end_headers()
                 self.wfile.write(b"Record not found")
                 return
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(content.encode("utf-8"))
         else:
             self.send_response(404)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(b"Not Found")
 
@@ -94,6 +134,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if not self._validate_csrf():
             self.send_response(403)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(b"Forbidden: CSRF check failed")
             return
@@ -102,9 +143,10 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/retry":
             query = urllib.parse.parse_qs(parsed.query)
             ids = query.get("id")
-            if not ids or not ids[0].isdigit():
+            if not ids or not ids[0].isascii() or not ids[0].isdigit():
                 self.send_response(400)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self._send_security_headers()
                 self.end_headers()
                 self.wfile.write(b"Bad Request: missing or invalid record id")
                 return
@@ -117,10 +159,12 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
             self.send_response(303)
             self.send_header("Location", "/")
+            self._send_security_headers()
             self.end_headers()
         else:
             self.send_response(404)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self._send_security_headers()
             self.end_headers()
             self.wfile.write(b"Not Found")
 
@@ -128,13 +172,16 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         records = api.records(dir=self.quarantine_dir)
         rows = []
         for r in records:
+            preview_err = r.error[:_ERROR_PREVIEW_LEN] + (
+                "..." if len(r.error) > _ERROR_PREVIEW_LEN else ""
+            )
             rows.append(f"""
                 <tr>
                     <td><a href="/record?id={r.id}">#{r.id:04d}</a></td>
                     <td><code>{html.escape(r.function)}</code></td>
                     <td>{html.escape(r.error_type)}</td>
-                    <td>{html.escape(r.error[:50])}...</td>
-                    <td>{r.attempts}</td>
+                    <td>{html.escape(preview_err)}</td>
+                    <td>{html.escape(str(r.attempts))}</td>
                     <td>
                         <form method="POST" action="/retry?id={r.id}" style="margin:0;">
                             <button type="submit" class="retry-btn">Retry</button>
@@ -216,13 +263,29 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
 def start_server(port: int, d: Path | str | None = None, host: str = "127.0.0.1") -> int:
     """Start the lightweight HTTP dashboard."""
-    DashboardHandler.quarantine_dir = d if d else default_dir()
+    target_dir = d if d else default_dir()
+
+    class _BoundDashboardHandler(DashboardHandler):
+        quarantine_dir = target_dir
+
     server_address = (host, port)
+    httpd: http.server.ThreadingHTTPServer | None = None
+    server_cls = http.server.ThreadingHTTPServer
+    if ":" in host and server_cls is http.server.ThreadingHTTPServer:
+
+        class _IPv6ThreadingHTTPServer(http.server.ThreadingHTTPServer):
+            address_family = socket.AF_INET6
+
+        server_cls = _IPv6ThreadingHTTPServer
 
     try:
-        httpd = http.server.ThreadingHTTPServer(server_address, DashboardHandler)
+        httpd = server_cls(server_address, _BoundDashboardHandler)
+        bound_addr = getattr(httpd, "server_address", server_address)
+        bound_port = int(bound_addr[1]) if isinstance(bound_addr, tuple) else port
         display_host = "localhost" if host == "127.0.0.1" else host
-        emit(f"Quarantine UI running at http://{display_host}:{port}/")
+        if ":" in display_host and not display_host.startswith("["):
+            display_host = f"[{display_host}]"
+        emit(f"Quarantine UI running at http://{display_host}:{bound_port}/")
         emit("Press Ctrl+C to stop.")
         httpd.serve_forever()
     except OSError as e:
@@ -230,6 +293,7 @@ def start_server(port: int, d: Path | str | None = None, host: str = "127.0.0.1"
         return 1
     except KeyboardInterrupt:
         emit("\nShutting down server...")
-        httpd.server_close()
+        if httpd is not None:
+            httpd.server_close()
 
     return 0

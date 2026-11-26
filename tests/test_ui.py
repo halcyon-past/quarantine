@@ -19,8 +19,12 @@ def test_ui_render_index(tmp_path):
     broken()
 
     handler = DashboardHandler.__new__(DashboardHandler)
+    saved = DashboardHandler.quarantine_dir
     DashboardHandler.quarantine_dir = d
-    html = handler._render_index()
+    try:
+        html = handler._render_index()
+    finally:
+        DashboardHandler.quarantine_dir = saved
 
     assert "Oops" in html
     assert "ValueError" in html
@@ -38,14 +42,17 @@ def test_ui_render_record(tmp_path):
     broken(42)
 
     handler = DashboardHandler.__new__(DashboardHandler)
+    saved = DashboardHandler.quarantine_dir
     DashboardHandler.quarantine_dir = d
+    try:
+        html = handler._render_record(1)
+        assert "42" in html
+        assert "Oops" in html
+        assert "broken" in html
 
-    html = handler._render_record(1)
-    assert "42" in html
-    assert "Oops" in html
-    assert "broken" in html
-
-    assert handler._render_record(99) == "Record not found"
+        assert handler._render_record(99) == "Record not found"
+    finally:
+        DashboardHandler.quarantine_dir = saved
 
 
 @pytest.fixture
@@ -103,6 +110,28 @@ def test_ui_get_record_validation(running_ui):
 
 def test_ui_post_csrf_protection(running_ui):
     base_url, port = running_ui
+
+    # Cross-origin attack with malicious Host (DNS rebinding) on GET and POST -> 403 Forbidden
+    req_get_host = urllib.request.Request(
+        f"{base_url}/",
+        headers={"Host": "evil.com"},
+        method="GET",
+    )
+    with pytest.raises(urllib.error.HTTPError) as exc_get_host:
+        urllib.request.urlopen(req_get_host)
+    assert exc_get_host.value.code == 403
+    exc_get_host.value.close()
+
+    req_post_host = urllib.request.Request(
+        f"{base_url}/retry?id=1",
+        data=b"",
+        headers={"Host": "evil.com"},
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as exc_post_host:
+        urllib.request.urlopen(req_post_host)
+    assert exc_post_host.value.code == 403
+    exc_post_host.value.close()
 
     # Cross-origin attack with malicious Origin -> 403 Forbidden
     req = urllib.request.Request(
