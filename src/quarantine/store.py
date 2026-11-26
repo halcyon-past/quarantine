@@ -701,9 +701,16 @@ def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBacken
         register_backend("azure", AzureBlobStore)
         register_backend("az", AzureBlobStore)
 
+    if scheme not in _BACKENDS and scheme in {"redis", "rediss"}:
+        from .redis_store import RedisStore  # noqa: PLC0415 - deferred so redis stays optional
+
+        for redis_scheme in ("redis", "rediss"):
+            if redis_scheme not in _BACKENDS:
+                register_backend(redis_scheme, RedisStore)
+
     factory = _BACKENDS.get(scheme)
     if factory is None:
-        known = ", ".join(sorted({*(_BACKENDS), "s3", "gs", "azure", "az"})) or "s3"
+        known = ", ".join(sorted({*(_BACKENDS), "s3", "gs", "azure", "az", "redis", "rediss"}))
         raise StorageError(
             f"no storage backend for {scheme}:// URLs (available: {known}). "
             f"Third-party backends can claim a scheme with quarantine.register_backend()."

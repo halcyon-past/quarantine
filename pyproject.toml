@@ -59,6 +59,7 @@ dev = [
     "boto3>=1.35",
     "google-cloud-storage>=2.10",
     "azure-storage-blob>=12.14",
+    "redis>=5.0",
     "moto[s3,server]>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
@@ -70,6 +71,7 @@ all = [
     "boto3>=1.35",
     "google-cloud-storage>=2.10",
     "azure-storage-blob>=12.14",
+    "redis>=5.0",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -82,6 +84,9 @@ gcs = [
 ]
 azure = [
     "azure-storage-blob>=12.14",
+]
+redis = [
+    "redis>=5.0",
 ]
 
 [project.urls]
