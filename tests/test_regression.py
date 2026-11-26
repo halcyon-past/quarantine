@@ -11,16 +11,19 @@ Run just this suite with ``pytest -m regression``.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
 import sys
 import textwrap
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
 from http.server import ThreadingHTTPServer
+from typing import Any
 
 import pytest
 
@@ -566,3 +569,651 @@ def test_a_fleet_shares_one_gcs_quarantine(tmp_path, run):
 
     after = run("-m", "quarantine", "list", "--dir", url, extra_env=gcs_env)
     assert "Nothing quarantined" in after.stdout
+
+
+def _azurite_reachable(host: str) -> bool:
+    try:
+        urllib.request.urlopen(f"{host}/devstoreaccount1?comp=list", timeout=1)
+    except (urllib.error.URLError, OSError):
+        return False
+    return True
+
+
+_AZURITE_HOST = os.environ.get("AZURE_STORAGE_EMULATOR_HOST", "http://127.0.0.1:10000")
+
+AZURE_WORKER = """
+import os
+import sys
+
+from quarantine import quarantine
+
+URL = os.environ["QUARANTINE_URL"]
+
+
+@quarantine(dir=URL, halt_after=None, report=False, retries=0)
+def process(item):
+    if item.endswith("bad") and os.environ.get("FIXED") != "1":
+        raise ValueError(f"cannot process {item}")
+    return item
+
+
+if __name__ == "__main__":
+    tag = sys.argv[1]
+    for suffix in ["ok-1", "bad", "ok-2"]:
+        process(f"{tag}-{suffix}")
+"""
+
+
+@pytest.mark.skipif(
+    not _azurite_reachable(_AZURITE_HOST),
+    reason=(
+        f"Azurite not reachable at {_AZURITE_HOST} - "
+        f"run `docker run -d -p 10000:10000 mcr.microsoft.com/azure-storage/azurite`"
+    ),
+)
+def test_a_fleet_shares_one_azure_quarantine(tmp_path, run):
+    """Issue #54's journey: ephemeral workers quarantine into one Azure container,
+    and the failures are inspected and replayed from a different machine."""
+    from azure.storage.blob import ContainerClient
+
+    conn_str = (
+        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
+        "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+        f"BlobEndpoint={_AZURITE_HOST}/devstoreaccount1;"
+    )
+    container_name = "fleet-container-azure"
+    client = ContainerClient.from_connection_string(conn_str, container_name=container_name)
+    with contextlib.suppress(Exception):
+        client.create_container()
+
+    url = f"azure://{container_name}/etl/{uuid.uuid4().hex}"
+    azure_env = {
+        "AZURE_STORAGE_CONNECTION_STRING": conn_str,
+        "QUARANTINE_URL": url,
+    }
+
+    _write_script(tmp_path, "worker.py", AZURE_WORKER)
+
+    # 1. two ephemeral "pods" run the job; their local disks tell no tales
+    for tag in ["w1", "w2"]:
+        result = run("worker.py", tag, extra_env=azure_env)
+        assert result.returncode == 0, result.stderr
+
+    # 2. from "the laptop": one shared store holds exactly the two failures
+    listed = run("-m", "quarantine", "list", "--dir", url, "--json", extra_env=azure_env)
+    assert listed.returncode == 0, listed.stderr
+    records = json.loads(listed.stdout)
+    assert sorted(r["error"] for r in records) == [
+        "cannot process w1-bad",
+        "cannot process w2-bad",
+    ]
+    assert [r["id"] for r in records] == [1, 2], "claimed ids never collided"
+
+    # 3. fix the bug, replay only the failures, the container empties
+    fixed = run(
+        "-m",
+        "quarantine",
+        "retry",
+        "--dir",
+        url,
+        "--import",
+        "worker.py",
+        extra_env={**azure_env, "FIXED": "1"},
+    )
+    assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+    assert "2 recovered" in fixed.stdout
+
+    after = run("-m", "quarantine", "list", "--dir", url, extra_env=azure_env)
+    assert "Nothing quarantined" in after.stdout
+
+
+class _MiniRespServer:
+    """Minimal in-process RESP2 TCP server for multi-process Redis regression tests."""
+
+    def __init__(self) -> None:
+        import fnmatch
+        import socket
+        import threading
+
+        self._fnmatch = fnmatch
+        self._lock = threading.Lock()
+        self._hashes: dict[str, dict[bytes, bytes]] = {}
+        self._strings: dict[str, bytes] = {}
+        self._expires: dict[str, float] = {}
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(16)
+        self.port = self._sock.getsockname()[1]
+        self._stop = False
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def _serve(self) -> None:
+        import threading
+
+        while not self._stop:
+            try:
+                self._sock.settimeout(0.2)
+                conn, _ = self._sock.accept()
+            except OSError:
+                continue
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    @staticmethod
+    def _read_line(buf: bytearray, conn: Any) -> bytes | None:
+        while b"\r\n" not in buf:
+            chunk = conn.recv(4096)
+            if not chunk:
+                return None
+            buf.extend(chunk)
+        idx = buf.index(b"\r\n")
+        line = bytes(buf[:idx])
+        del buf[: idx + 2]
+        return line
+
+    def _read_cmd(self, buf: bytearray, conn: Any) -> list[bytes] | None:
+        line = self._read_line(buf, conn)
+        if line is None:
+            return None
+        if not line.startswith(b"*"):
+            return line.split()
+        count = int(line[1:])
+        parts: list[bytes] = []
+        for _ in range(count):
+            hdr = self._read_line(buf, conn)
+            if hdr is None or not hdr.startswith(b"$"):
+                return None
+            length = int(hdr[1:])
+            while len(buf) < length + 2:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    return None
+                buf.extend(chunk)
+            parts.append(bytes(buf[:length]))
+            del buf[: length + 2]
+        return parts
+
+    @staticmethod
+    def _resp_bulk(data: bytes | None) -> bytes:
+        if data is None:
+            return b"$-1\r\n"
+        return f"${len(data)}\r\n".encode() + data + b"\r\n"
+
+    @classmethod
+    def _resp_array(cls, items: list[bytes]) -> bytes:
+        out = [f"*{len(items)}\r\n".encode()]
+        out.extend(cls._resp_bulk(i) for i in items)
+        return b"".join(out)
+
+    def _purge(self, key: str) -> None:
+        exp = self._expires.get(key)
+        if exp is not None and time.monotonic() >= exp:
+            self._expires.pop(key, None)
+            self._hashes.pop(key, None)
+            self._strings.pop(key, None)
+
+    def _cmd_scan(self, args: list[bytes]) -> bytes:
+        pattern = "*"
+        upper_args = [a.upper() for a in args]
+        if b"MATCH" in upper_args:
+            pattern = args[upper_args.index(b"MATCH") + 1].decode("utf-8")
+        with self._lock:
+            for k in list(self._expires):
+                self._purge(k)
+            keys = [
+                k.encode("utf-8")
+                for k in list(self._hashes) + list(self._strings)
+                if self._fnmatch.fnmatch(k, pattern)
+            ]
+        return b"*2\r\n$1\r\n0\r\n" + self._resp_array(keys)
+
+    def _cmd_hset(self, args: list[bytes]) -> bytes:
+        key = args[0].decode("utf-8")
+        with self._lock:
+            self._purge(key)
+            h = self._hashes.setdefault(key, {})
+            added = 0
+            for i in range(1, len(args), 2):
+                if args[i] not in h:
+                    added += 1
+                h[args[i]] = args[i + 1]
+        return f":{added}\r\n".encode()
+
+    def _cmd_hgetall(self, args: list[bytes], *, resp3: bool = False) -> bytes:
+        key = args[0].decode("utf-8")
+        with self._lock:
+            self._purge(key)
+            h = self._hashes.get(key, {})
+            flat: list[bytes] = []
+            for k, v in h.items():
+                flat.extend([k, v])
+            n = len(h)
+        if resp3:
+            body = b"".join(self._resp_bulk(item) for item in flat)
+            return f"%{n}\r\n".encode() + body
+        return self._resp_array(flat)
+
+    def _cmd_hexists(self, args: list[bytes]) -> bytes:
+        key = args[0].decode("utf-8")
+        with self._lock:
+            self._purge(key)
+            present = int(args[1] in self._hashes.get(key, {}))
+        return f":{present}\r\n".encode()
+
+    def _cmd_exists(self, args: list[bytes]) -> bytes:
+        key = args[0].decode("utf-8")
+        with self._lock:
+            self._purge(key)
+            present = int(key in self._hashes or key in self._strings)
+        return f":{present}\r\n".encode()
+
+    def _cmd_set(self, args: list[bytes]) -> bytes:
+        key = args[0].decode("utf-8")
+        nx = any(a.upper() == b"NX" for a in args[2:])
+        with self._lock:
+            self._purge(key)
+            if nx and (key in self._strings or key in self._hashes):
+                return b"$-1\r\n"
+            self._strings[key] = args[1]
+        return b"+OK\r\n"
+
+    def _cmd_incr(self, args: list[bytes]) -> bytes:
+        key = args[0].decode("utf-8")
+        delta = int(args[1]) if len(args) > 1 else 1
+        with self._lock:
+            self._purge(key)
+            val = int(self._strings.get(key, b"0")) + delta
+            self._strings[key] = str(val).encode("utf-8")
+        return f":{val}\r\n".encode()
+
+    def _cmd_expire(self, args: list[bytes]) -> bytes:
+        key = args[0].decode("utf-8")
+        sec = int(args[1])
+        with self._lock:
+            self._purge(key)
+            if key not in self._hashes and key not in self._strings:
+                return b":0\r\n"
+            self._expires[key] = time.monotonic() + sec
+        return b":1\r\n"
+
+    def _cmd_del(self, args: list[bytes]) -> bytes:
+        with self._lock:
+            removed = 0
+            for raw in args:
+                key = raw.decode("utf-8")
+                self._purge(key)
+                if key in self._hashes or key in self._strings:
+                    removed += 1
+                self._hashes.pop(key, None)
+                self._strings.pop(key, None)
+                self._expires.pop(key, None)
+        return f":{removed}\r\n".encode()
+
+    @staticmethod
+    def _cmd_hello(args: list[bytes]) -> bytes:
+        if args and args[0] == b"3":
+            return (
+                b"%3\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
+                b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:3\r\n"
+            )
+        return (
+            b"*6\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
+            b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:2\r\n"
+        )
+
+    def _exec_one(self, parts: list[bytes], *, resp3: bool = False) -> bytes:
+        cmd = parts[0].decode("utf-8").upper()
+        args = parts[1:]
+        if cmd == "PING":
+            return b"+PONG\r\n"
+        if cmd in {"SELECT", "CLIENT", "WATCH", "UNWATCH"}:
+            return b"+OK\r\n"
+        if cmd == "HGETALL":
+            return self._cmd_hgetall(args, resp3=resp3)
+        handlers = {
+            "HELLO": self._cmd_hello,
+            "SCAN": self._cmd_scan,
+            "HSET": self._cmd_hset,
+            "HEXISTS": self._cmd_hexists,
+            "EXISTS": self._cmd_exists,
+            "SET": self._cmd_set,
+            "INCR": self._cmd_incr,
+            "INCRBY": self._cmd_incr,
+            "EXPIRE": self._cmd_expire,
+            "DEL": self._cmd_del,
+        }
+        handler = handlers.get(cmd)
+        if handler is not None:
+            return handler(args)
+        return f"-ERR unknown command '{cmd}'\r\n".encode()
+
+    def _handle(self, conn: Any) -> None:
+        buf = bytearray()
+        in_tx = False
+        resp3 = False
+        tx_queue: list[list[bytes]] = []
+        with conn:
+            while not self._stop:
+                parts = self._read_cmd(buf, conn)
+                if parts is None:
+                    return
+                if not parts:
+                    continue
+                cmd = parts[0].decode("utf-8").upper()
+                if cmd == "HELLO" and len(parts) > 1 and parts[1] == b"3":
+                    resp3 = True
+                if cmd == "MULTI":
+                    in_tx = True
+                    tx_queue.clear()
+                    conn.sendall(b"+OK\r\n")
+                elif cmd == "EXEC":
+                    in_tx = False
+                    replies = [self._exec_one(q, resp3=resp3) for q in tx_queue]
+                    tx_queue.clear()
+                    conn.sendall(f"*{len(replies)}\r\n".encode() + b"".join(replies))
+                elif in_tx:
+                    tx_queue.append(parts)
+                    conn.sendall(b"+QUEUED\r\n")
+                else:
+                    conn.sendall(self._exec_one(parts, resp3=resp3))
+
+    def stop(self) -> None:
+        self._stop = True
+        with contextlib.suppress(OSError):
+            self._sock.close()
+        self._thread.join(timeout=1.0)
+
+
+REDIS_WORKER = """
+import os
+import sys
+
+from quarantine import quarantine
+
+URL = os.environ["QUARANTINE_URL"]
+
+
+@quarantine(dir=URL, halt_after=None, report=False, retries=0)
+def process(item):
+    if item.endswith("bad") and os.environ.get("FIXED") != "1":
+        raise ValueError(f"cannot process {item}")
+    return item
+
+
+if __name__ == "__main__":
+    tag = sys.argv[1]
+    for suffix in ["ok-1", "bad", "ok-2"]:
+        process(f"{tag}-{suffix}")
+"""
+
+
+def test_a_fleet_shares_one_redis_quarantine(tmp_path, run):
+    """Issue #55's journey: ephemeral workers quarantine into one Redis store,
+    and the failures are inspected and replayed from a different machine."""
+    server = _MiniRespServer()
+    try:
+        url = f"redis://127.0.0.1:{server.port}/0?prefix=fleet-{uuid.uuid4().hex[:8]}&ttl=3600"
+        env = {"QUARANTINE_URL": url}
+
+        _write_script(tmp_path, "worker.py", REDIS_WORKER)
+
+        # 1. two ephemeral "pods" run the job concurrently; their local disks tell no tales
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda tag: run("worker.py", tag, extra_env=env), ["w1", "w2"]))
+        for result in results:
+            assert result.returncode == 0, result.stderr
+
+        # 2. from "the laptop": one shared store holds exactly the two failures
+        listed = run("-m", "quarantine", "list", "--dir", url, "--json", extra_env=env)
+        assert listed.returncode == 0, listed.stderr
+        records = json.loads(listed.stdout)
+        assert sorted(r["error"] for r in records) == [
+            "cannot process w1-bad",
+            "cannot process w2-bad",
+        ]
+        assert [r["id"] for r in records] == [1, 2], "claimed ids never collided"
+
+        # 3. fix the bug, replay only the failures, the Redis prefix empties
+        fixed = run(
+            "-m",
+            "quarantine",
+            "retry",
+            "--dir",
+            url,
+            "--import",
+            "worker.py",
+            extra_env={**env, "FIXED": "1"},
+        )
+        assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+        assert "2 recovered" in fixed.stdout
+
+        after = run("-m", "quarantine", "list", "--dir", url, extra_env=env)
+        assert "Nothing quarantined" in after.stdout
+    finally:
+        server.stop()
+
+
+class _MiniDatabricksFilesServer:
+    """Minimal HTTP server implementing Databricks Files API v2.0 for regression tests."""
+
+    def __init__(self) -> None:
+        import posixpath
+        from http.server import BaseHTTPRequestHandler
+
+        self._posixpath = posixpath
+        self._lock = threading.Lock()
+        self._dirs: set[str] = set()
+        self._files: dict[str, bytes] = {}
+        parent = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                pass
+
+            def _send_json(self, code: int, payload: dict[str, Any]) -> None:
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                path = urllib.parse.unquote(parsed.path)
+                if path.startswith("/api/2.0/fs/directories"):
+                    dpath = parent._posixpath.normpath(path[len("/api/2.0/fs/directories") :])
+                    with parent._lock:
+                        if dpath not in parent._dirs:
+                            self._send_json(
+                                404, {"error_code": "NOT_FOUND", "message": "not found"}
+                            )
+                            return
+                        prefix = dpath.rstrip("/") + "/"
+                        contents: list[dict[str, Any]] = []
+                        for d in sorted(parent._dirs):
+                            if d.startswith(prefix):
+                                rest = d[len(prefix) :]
+                                if "/" not in rest and rest:
+                                    contents.append({"name": rest, "path": d, "is_directory": True})
+                        for f, data in sorted(parent._files.items()):
+                            if f.startswith(prefix):
+                                rest = f[len(prefix) :]
+                                if "/" not in rest and rest:
+                                    contents.append(
+                                        {
+                                            "name": rest,
+                                            "path": f,
+                                            "is_directory": False,
+                                            "file_size": len(data),
+                                        }
+                                    )
+                    self._send_json(200, {"contents": contents})
+                    return
+                if path.startswith("/api/2.0/fs/files"):
+                    fpath = parent._posixpath.normpath(path[len("/api/2.0/fs/files") :])
+                    with parent._lock:
+                        file_data = parent._files.get(fpath)
+                    if file_data is None:
+                        self._send_json(404, {"error_code": "NOT_FOUND", "message": "not found"})
+                        return
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(file_data)))
+                    self.end_headers()
+                    self.wfile.write(file_data)
+                    return
+                self._send_json(404, {"error_code": "NOT_FOUND", "message": "unknown route"})
+
+            def do_PUT(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                path = urllib.parse.unquote(parsed.path)
+                length = int(self.headers.get("Content-Length") or "0")
+                body = self.rfile.read(length) if length else b""
+                if path.startswith("/api/2.0/fs/directories"):
+                    dpath = parent._posixpath.normpath(path[len("/api/2.0/fs/directories") :])
+                    with parent._lock:
+                        parts = dpath.strip("/").split("/")
+                        for i in range(1, len(parts) + 1):
+                            parent._dirs.add("/" + "/".join(parts[:i]))
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                if path.startswith("/api/2.0/fs/files"):
+                    fpath = parent._posixpath.normpath(path[len("/api/2.0/fs/files") :])
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    overwrite = qs.get("overwrite", ["true"])[0].lower() != "false"
+                    with parent._lock:
+                        if not overwrite and fpath in parent._files:
+                            self._send_json(
+                                409,
+                                {"error_code": "RESOURCE_ALREADY_EXISTS", "message": "exists"},
+                            )
+                            return
+                        parent._dirs.add(parent._posixpath.dirname(fpath))
+                        parent._files[fpath] = body
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                self._send_json(404, {"error_code": "NOT_FOUND", "message": "unknown route"})
+
+            def do_DELETE(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                path = urllib.parse.unquote(parsed.path)
+                if path.startswith("/api/2.0/fs/directories"):
+                    dpath = parent._posixpath.normpath(path[len("/api/2.0/fs/directories") :])
+                    with parent._lock:
+                        if dpath not in parent._dirs:
+                            self._send_json(
+                                404, {"error_code": "NOT_FOUND", "message": "not found"}
+                            )
+                            return
+                        prefix = dpath.rstrip("/") + "/"
+                        for k in [p for p in parent._files if p.startswith(prefix)]:
+                            del parent._files[k]
+                        for d in [p for p in parent._dirs if p == dpath or p.startswith(prefix)]:
+                            parent._dirs.discard(d)
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                if path.startswith("/api/2.0/fs/files"):
+                    fpath = parent._posixpath.normpath(path[len("/api/2.0/fs/files") :])
+                    with parent._lock:
+                        if fpath not in parent._files:
+                            self._send_json(
+                                404, {"error_code": "NOT_FOUND", "message": "not found"}
+                            )
+                            return
+                        del parent._files[fpath]
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                self._send_json(404, {"error_code": "NOT_FOUND", "message": "unknown route"})
+
+        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._httpd.server_address[1]
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._httpd.shutdown()
+        self._httpd.server_close()
+        self._thread.join(timeout=1.0)
+
+
+DATABRICKS_WORKER = """
+import os
+import sys
+
+from quarantine import quarantine
+
+VOL = os.environ["QUARANTINE_VOLUME"]
+
+
+@quarantine(dir=VOL, halt_after=None, report=False, retries=0)
+def process(item):
+    if item.endswith("bad") and os.environ.get("FIXED") != "1":
+        raise ValueError(f"cannot process {item}")
+    return item
+
+
+if __name__ == "__main__":
+    tag = sys.argv[1]
+    for suffix in ["ok-1", "bad", "ok-2"]:
+        process(f"{tag}-{suffix}")
+"""
+
+
+def test_a_fleet_shares_one_databricks_volume_quarantine(tmp_path, run):
+    """Issue #56's journey: ephemeral workers quarantine into one Unity Catalog Volume,
+    and the failures are inspected and replayed from a different machine."""
+    server = _MiniDatabricksFilesServer()
+    try:
+        vol = f"/Volumes/main/analytics/quarantine/fleet-{uuid.uuid4().hex[:8]}"
+        env = {
+            "DATABRICKS_HOST": f"http://127.0.0.1:{server.port}",
+            "DATABRICKS_TOKEN": "test-token",
+            "QUARANTINE_VOLUME": vol,
+        }
+
+        _write_script(tmp_path, "worker.py", DATABRICKS_WORKER)
+
+        # 1. two ephemeral workers run concurrently into the same Volume
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda tag: run("worker.py", tag, extra_env=env), ["w1", "w2"]))
+        for result in results:
+            assert result.returncode == 0, result.stderr
+
+        # 2. from "the laptop": one shared store holds exactly the two failures
+        listed = run("-m", "quarantine", "list", "--dir", vol, "--json", extra_env=env)
+        assert listed.returncode == 0, listed.stderr
+        records = json.loads(listed.stdout)
+        assert sorted(r["error"] for r in records) == [
+            "cannot process w1-bad",
+            "cannot process w2-bad",
+        ]
+        assert [r["id"] for r in records] == [1, 2], "claimed ids never collided"
+
+        # 3. fix the bug, replay only the failures, the Volume directory empties
+        fixed = run(
+            "-m",
+            "quarantine",
+            "retry",
+            "--dir",
+            vol,
+            "--import",
+            "worker.py",
+            extra_env={**env, "FIXED": "1"},
+        )
+        assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+        assert "2 recovered" in fixed.stdout
+
+        after = run("-m", "quarantine", "list", "--dir", vol, extra_env=env)
+        assert "Nothing quarantined" in after.stdout
+    finally:
+        server.stop()

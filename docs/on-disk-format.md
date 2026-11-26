@@ -1,3 +1,8 @@
+---
+title: On-Disk Format & Record Architecture · quarantine-py
+description: The directory and file structure of .quarantine/. Atomic guarantees, input serialization, metadata schemas, and safe concurrency without database servers.
+---
+
 # The on-disk format
 
 [← docs index](index.md)

@@ -15,30 +15,101 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
     quarantine_dir: Path | str | None = None
 
+    def _validate_csrf(self) -> bool:
+        """Validate Host, Origin, and Referer headers against DNS rebinding and CSRF."""
+        host_header = self.headers.get("Host")
+        if not host_header:
+            return False
+
+        addr = self.server.server_address
+        if isinstance(addr, tuple):
+            server_host, server_port = str(addr[0]), int(addr[1])
+        else:
+            server_host, server_port = "127.0.0.1", 8080
+        allowed_hosts = {
+            f"{server_host}:{server_port}",
+            str(server_host),
+            "127.0.0.1",
+            f"127.0.0.1:{server_port}",
+            "localhost",
+            f"localhost:{server_port}",
+        }
+        if server_host in {"0.0.0.0", ""}:  # noqa: S104
+            allowed_hosts.add(host_header.lower())
+            allowed_hosts.add(host_header.split(":")[0].lower())
+        elif host_header.lower() not in allowed_hosts:
+            return False
+
+        origin = self.headers.get("Origin")
+        if origin:
+            parsed_origin = urllib.parse.urlparse(origin).netloc.lower()
+            if parsed_origin not in allowed_hosts:
+                return False
+
+        referer = self.headers.get("Referer")
+        if referer:
+            parsed_referer = urllib.parse.urlparse(referer).netloc.lower()
+            if parsed_referer not in allowed_hosts:
+                return False
+
+        return True
+
     def do_GET(self) -> None:
         """Handle GET requests for viewing records."""
-        if self.path in {"/", ""}:
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path in {"/", ""}:
             self.send_response(200)
-            self.send_header("Content-type", "text/html")
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(self._render_index().encode("utf-8"))
-        elif self.path.startswith("/record?id="):
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            record_id = int(query["id"][0])
+        elif parsed.path == "/record":
+            query = urllib.parse.parse_qs(parsed.query)
+            ids = query.get("id")
+            if not ids or not ids[0].isdigit():
+                self.send_response(400)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Bad Request: missing or invalid record id")
+                return
+            record_id = int(ids[0])
+            content = self._render_record(record_id)
+            if content == "Record not found":
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Record not found")
+                return
             self.send_response(200)
-            self.send_header("Content-type", "text/html")
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(self._render_record(record_id).encode("utf-8"))
+            self.wfile.write(content.encode("utf-8"))
         else:
             self.send_response(404)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
             self.wfile.write(b"Not Found")
 
     def do_POST(self) -> None:
         """Handle POST requests for retrying records."""
-        if self.path.startswith("/retry?id="):
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            record_id = int(query["id"][0])
+        if not self._validate_csrf():
+            self.send_response(403)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Forbidden: CSRF check failed")
+            return
+
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/retry":
+            query = urllib.parse.parse_qs(parsed.query)
+            ids = query.get("id")
+            if not ids or not ids[0].isdigit():
+                self.send_response(400)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Bad Request: missing or invalid record id")
+                return
+
+            record_id = int(ids[0])
             try:
                 api.retry([record_id], dir=self.quarantine_dir)
             except Exception as exc:  # noqa: BLE001 - generic failure
@@ -49,7 +120,9 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
         else:
             self.send_response(404)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
+            self.wfile.write(b"Not Found")
 
     def _render_index(self) -> str:
         records = api.records(dir=self.quarantine_dir)
@@ -141,18 +214,19 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 </html>"""
 
 
-def start_server(port: int, d: Path | str | None = None) -> int:
+def start_server(port: int, d: Path | str | None = None, host: str = "127.0.0.1") -> int:
     """Start the lightweight HTTP dashboard."""
     DashboardHandler.quarantine_dir = d if d else default_dir()
-    server_address = ("", port)
+    server_address = (host, port)
 
     try:
-        httpd = http.server.HTTPServer(server_address, DashboardHandler)
-        emit(f"Quarantine UI running at http://localhost:{port}/")
+        httpd = http.server.ThreadingHTTPServer(server_address, DashboardHandler)
+        display_host = "localhost" if host == "127.0.0.1" else host
+        emit(f"Quarantine UI running at http://{display_host}:{port}/")
         emit("Press Ctrl+C to stop.")
         httpd.serve_forever()
     except OSError as e:
-        warn(f"Failed to start server on port {port}: {e}")
+        warn(f"Failed to start server on {host}:{port}: {e}")
         return 1
     except KeyboardInterrupt:
         emit("\nShutting down server...")

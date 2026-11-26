@@ -39,6 +39,7 @@ from .record import (
     payload_filename,
     utcnow,
 )
+from .reporting import warn
 from .serialize import Serialized
 
 __all__ = [
@@ -117,19 +118,35 @@ class FileLock:
         except OSError:
             return True  # vanished underneath us - retry immediately
         if age > self.stale_after:
-            with contextlib.suppress(OSError):
+            try:
                 self.path.unlink()
-            return True
+            except OSError:
+                return False  # Failed to break lock; do not bypass deadline
+            else:
+                return True
         return False
 
     def release(self) -> None:
         """Release the lock, tolerating a lock that was already broken open."""
+        can_unlink = True
         if self._fd is not None:
+            try:
+                fd_stat = os.fstat(self._fd)
+                path_stat = self.path.stat()
+                if (
+                    getattr(fd_stat, "st_ino", None)
+                    and getattr(path_stat, "st_ino", None)
+                    and fd_stat.st_ino != path_stat.st_ino
+                ):
+                    can_unlink = False
+            except OSError:
+                can_unlink = False
             with contextlib.suppress(OSError):
                 os.close(self._fd)
             self._fd = None
-        with contextlib.suppress(OSError):
-            self.path.unlink()
+        if can_unlink:
+            with contextlib.suppress(OSError):
+                self.path.unlink()
 
     def __enter__(self) -> FileLock:
         self.acquire()
@@ -382,7 +399,13 @@ class Store(StorageBackend):
             entries = list(os.scandir(self.dir))
         except OSError as exc:
             raise StorageError(f"cannot list {self.dir}: {exc}") from exc
-        found = [Path(entry.path) for entry in entries if entry.is_dir() and entry.name.isdigit()]
+        found = [
+            Path(entry.path)
+            for entry in entries
+            if entry.name.isdigit()
+            and entry.is_dir(follow_symlinks=False)
+            and not entry.is_symlink()
+        ]
         return sorted(found, key=lambda p: int(p.name))
 
     def records(self) -> list[Record]:
@@ -455,7 +478,10 @@ class Store(StorageBackend):
             shutil.rmtree(staging, ignore_errors=True)
             raise StorageError(f"cannot write a record into {self.dir}: {io_error}") from io_error
         record.path = final
-        self._index_upsert(record)
+        try:
+            self._index_upsert(record)
+        except StorageError as err:
+            warn(f"could not update index cache ({err}); index will rebuild on demand")
         return record
 
     def _promote(self, staging: Path, record: Record) -> Path:
@@ -516,7 +542,7 @@ class Store(StorageBackend):
         for entry in os.scandir(self.dir):
             if not entry.name.startswith(TMP_PREFIX):
                 continue
-            if entry.is_dir():
+            if entry.is_dir(follow_symlinks=False) and not entry.is_symlink():
                 shutil.rmtree(entry.path, ignore_errors=True)
             else:
                 with contextlib.suppress(OSError):
@@ -639,22 +665,34 @@ def _scheme_of(value: str) -> str | None:
     return value[: value.index("://")].lower() if match else None
 
 
+def _is_volume_path(value: str | os.PathLike[str]) -> bool:
+    raw = Path(value).as_posix() if isinstance(value, os.PathLike) else str(value)
+    return raw == "/Volumes" or raw.startswith("/Volumes/")
+
+
 def coerce_dir(value: str | os.PathLike[str] | None) -> Path | str:
-    """Normalise a ``dir=`` argument: backend URLs stay strings, paths become ``Path``.
+    """Normalise a ``dir=`` argument: backend URLs and ``/Volumes/`` paths stay strings.
 
     ``Path("s3://bucket")`` would silently collapse the ``//`` and corrupt the
-    URL, which is why this must happen before any ``Path()`` call.
+    URL, and ``Path("/Volumes/...")`` would flip separators on Windows, which
+    is why both must stay strings before any ``Path()`` call.
     """
     if value is None:
         return default_dir()
     if isinstance(value, str) and _scheme_of(value) is not None:
         return value
+    if _is_volume_path(value):
+        return Path(value).as_posix() if isinstance(value, os.PathLike) else str(value)
     return Path(value)
 
 
 def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBackend:
-    """Open the right backend for *directory*: a local path or a backend URL."""
+    """Open the right backend for *directory*: a local path, Volume path, or backend URL."""
     target = coerce_dir(directory)
+    if _is_volume_path(target):
+        from .databricks_store import DatabricksVolumeStore  # noqa: PLC0415
+
+        return DatabricksVolumeStore(target)
     if isinstance(target, Path):
         return Store(target)
     scheme = _scheme_of(target)
@@ -669,9 +707,22 @@ def open_store(directory: str | os.PathLike[str] | None = None) -> StorageBacken
 
         register_backend("gs", GCSStore)
 
+    if scheme not in _BACKENDS and scheme in {"azure", "az"}:
+        from .azure_store import AzureBlobStore  # noqa: PLC0415
+
+        register_backend("azure", AzureBlobStore)
+        register_backend("az", AzureBlobStore)
+
+    if scheme not in _BACKENDS and scheme in {"redis", "rediss"}:
+        from .redis_store import RedisStore  # noqa: PLC0415 - deferred so redis stays optional
+
+        for redis_scheme in ("redis", "rediss"):
+            if redis_scheme not in _BACKENDS:
+                register_backend(redis_scheme, RedisStore)
+
     factory = _BACKENDS.get(scheme)
     if factory is None:
-        known = ", ".join(sorted({*(_BACKENDS), "s3", "gs"})) or "s3"
+        known = ", ".join(sorted({*(_BACKENDS), "s3", "gs", "azure", "az", "redis", "rediss"}))
         raise StorageError(
             f"no storage backend for {scheme}:// URLs (available: {known}). "
             f"Third-party backends can claim a scheme with quarantine.register_backend()."
@@ -686,7 +737,7 @@ def default_dir() -> Path | str:
     as well as a path.
     """
     value = os.environ.get("QUARANTINE_DIR") or ".quarantine"
-    if _scheme_of(value) is not None:
+    if _scheme_of(value) is not None or _is_volume_path(value):
         return value
     return Path(value)
 

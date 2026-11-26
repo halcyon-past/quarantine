@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-27
+
+### Added
+- **Databricks Unity Catalog Volumes backend for pluggable storage** ([#56](https://github.com/halcyon-past/quarantine/issues/56)): `dir="/Volumes/catalog/schema/volume/quarantine"` (as well as `--dir` and `$QUARANTINE_DIR`) stores quarantined records directly in governed Unity Catalog Volumes via `databricks-sdk` (`pip install "quarantine-py[databricks]"` — core remains zero-dependency). Ids are claimed atomically via `.claim` with `overwrite=False` and `meta.json` is uploaded last as the commit point ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). Documented in [docs/remote-storage.md](docs/remote-storage.md).
+- **Redis storage backend for pluggable storage** ([#55](https://github.com/halcyon-past/quarantine/issues/55)): `dir="redis://host:6379/0"` (and `rediss://` for TLS, with optional `?prefix=...&ttl=...` query parameters) stores quarantined records atomically as Redis hashes under `{<prefix>}:record:<id>` using `MULTI`/`EXEC` transactions, with `INCR`-based id allocation and optional per-record TTL expiration (`pip install "quarantine-py[redis]"`). Documented in [docs/remote-storage.md](docs/remote-storage.md).
+
+### Security
+- **Local dashboard host binding & CSRF protection**: `quarantine ui` now binds to `127.0.0.1` by default rather than all network interfaces (`0.0.0.0`), with an explicit `--host` option added for remote bindings. The HTTP server now runs on `ThreadingHTTPServer` and validates `Host`, `Origin`, and `Referer` headers on all POST requests to prevent DNS rebinding and cross-site request forgery attacks.
+- **Local storage symlink traversal hardening**: `Store.record_dirs()` and `Store.purge_temp()` now explicitly enforce `follow_symlinks=False` and `not entry.is_symlink()`, preventing path traversal and accidental recursive deletion across directory symlinks.
+- **Remote cache file descriptor leak prevention**: wrapped `_safe_write_cache_file()` in `S3Store`, `GCSStore`, and `AzureStore` to ensure file descriptors are safely closed if `os.fdopen()` fails.
+
+### Fixed
+- **`FileLock` timeout hang on stale lock deletion**: wrapped lock unlinking in `FileLock._break_if_stale()` with `try/except OSError`, returning `False` so `acquire()` respects the deadline timeout rather than busy looping infinitely on permission denial.
+- **`FileLock.release()` lock-stealing race**: added inode comparison (`fd_stat.st_ino == path_stat.st_ino`) before unlinking so a lockfile re-created or stolen by another process is not deleted on release.
+- **Permanent daemon wedging on capacity limits**: `Quarantine._check_capacity()` now re-syncs the cached record count with disk (`self.store.count()`) whenever `self._count >= limit`, allowing long-running background workers to resume quarantining immediately when records are cleared externally.
+- **`quarantine debug` with `async def` coroutines**: `cli._post_mortem()` now checks whether the target outcome is an awaitable coroutine and executes it via `asyncio.run()`, ensuring the debugger drops into the failing frame rather than exiting prematurely with a false-positive success message.
+- **Public API parity for `api.aretry`**: added `import_from: str | Path | None = None` to top-level `aretry()`, restoring full parity with `Quarantine.aretry()` and sync `quarantine.retry()`.
+- **Store index cache error resilience**: `Store.add()` now catches `StorageError` on `_index_upsert()` and emits a warning via `reporting.warn()`, preserving the invariant that `index.json` is a rebuildable cache and never aborts a successful failure record write.
+- **Corrupted record encoding tolerance**: `Record.traceback_text()` and `Record.input_text()` now read text with `errors="replace"`, preventing `UnicodeDecodeError` crashes on non-UTF-8 bytes.
+- **Record ID coercion**: `Record.from_meta()` now coerces string IDs into integers with clear `StorageError` validation, preventing format string crashes.
+- **Documentation site build failure**: fixed Jinja2 null-safety in `overrides/main.html` for 404/error templates and updated invalid icon `simple/linkedin` to `fontawesome/brands/linkedin` in `mkdocs.yml`.
+- **Pytest-asyncio deprecation warning**: added `asyncio_default_fixture_loop_scope = "function"` to `pyproject.toml` to prevent strict CI test failures.
+
+### Performance
+- **Targeted `retry(ids=...)` optimization**: `Quarantine._retry_plan()` now executes targeted $O(k)$ lookups via `self.store.get(id)` when specific record IDs are requested, avoiding full $O(N)$ store scans across disk and remote S3/GCS buckets.
+
+## [2.0.0] - 2026-11-01
+
+### Added
+- **Azure Blob Storage backend for pluggable storage** ([#54](https://github.com/halcyon-past/quarantine/issues/54)): `dir="azure://container/prefix"` (and `az://`, `--dir`, and `$QUARANTINE_DIR`) joins the S3 and GCS backends, giving Azure Blob Storage the same one-shared-quarantine journey for a fleet of ephemeral workers. Installed as an optional extra (`pip install "quarantine-py[azure]"`) — the core stays zero-dependency. The Azure layout mirrors the local folder and the S3/GCS backends per record; ids are claimed with Azure's conditional write (`overwrite=False` sending `If-None-Match: *`) and `meta.json` is uploaded last as the commit point, so a reader can never observe a partial record ([ADR 0007](docs/adr/0007-object-store-commit-point.md)). Setup, credentials (connection strings, account keys, SAS tokens, and Managed Identity via `DefaultAzureCredential`) and the minimal RBAC role (`Storage Blob Data Contributor`) are documented in [docs/remote-storage.md](docs/remote-storage.md) and [docs/azure-blob.md](docs/azure-blob.md).
+- **Dedicated cloud storage guides**: added comprehensive, standalone documentation pages for [AWS S3](docs/aws-s3.md), [Google Cloud Storage](docs/gcp-gcs.md), and [Azure Blob Storage](docs/azure-blob.md) covering installation, authentication architectures (IRSA, ADC, Managed Identity), least-privilege IAM/RBAC policies, emulator setup, and common FAQs.
+- **Search Engine & Generative Engine Optimization (SEO/GEO)**: expanded structured metadata across documentation pages, added `llms.txt`, `llms-full.txt`, `ai.txt`, OpenGraph/Twitter summary cards, and Schema.org `SoftwareSourceCode` and `Author` knowledge graphs.
+
 ## [1.2.0] - 2026-09-27
 
 ### Added
@@ -107,6 +140,7 @@ First release.
   drift from the code.
 - Full type annotations and a `py.typed` marker.
 
+[2.0.0]: https://github.com/halcyon-past/quarantine/releases/tag/v2.0.0
 [1.2.0]: https://github.com/halcyon-past/quarantine/releases/tag/v1.2.0
 [1.0.0]: https://github.com/halcyon-past/quarantine/releases/tag/v1.0.0
 [0.3.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.3.0
@@ -116,5 +150,5 @@ First release.
 [0.1.2]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.2
 [0.1.1]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.1
 [0.1.0]: https://github.com/halcyon-past/quarantine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/halcyon-past/quarantine/compare/v2.0.0...HEAD
 
