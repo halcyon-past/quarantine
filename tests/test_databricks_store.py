@@ -252,6 +252,7 @@ def test_non_int_dirs_and_corrupt_meta_are_handled(store, fake_ws, volume_path, 
     q = Quarantine(volume_path, halt_after=None, report=False)
     q.call(module.load, "bad")
     fake_ws.files.upload(f"{store.dir}/notanint/meta.json", io.BytesIO(b"{}"), overwrite=True)
+    fake_ws.files.upload(f"{store.dir}/²/meta.json", io.BytesIO(b"{}"), overwrite=True)
     fake_ws.files.upload(f"{store.dir}/0002/traceback.txt", io.BytesIO(b"partial"), overwrite=True)
     fake_ws.files.upload(f"{store.dir}/0003/meta.json", io.BytesIO(b"{corrupt"), overwrite=True)
 
@@ -402,11 +403,38 @@ def test_the_cli_works_against_databricks_volume(volume_path, module, capsys):
 
 def test_dashboard_handler_reads_volume_store(volume_path, module):
     Quarantine(volume_path, halt_after=None, report=False).call(module.load, "bad")
-    store = open_store(volume_path)
-    records = store.records()
-    assert len(records) == 1
-    assert hasattr(DashboardHandler, "do_GET")
-    assert store.get(1).function == "load"
+    handler = DashboardHandler.__new__(DashboardHandler)
+    prev = DashboardHandler.quarantine_dir
+    DashboardHandler.quarantine_dir = volume_path
+    try:
+        index_html = handler._render_index()
+        record_html = handler._render_record(1)
+    finally:
+        DashboardHandler.quarantine_dir = prev
+    assert "cannot load bad" in index_html
+    assert "load" in index_html
+    assert "cannot load bad" in record_html
+
+
+def test_get_and_delete_are_o1_api_calls(store, fake_ws, volume_path, module):
+    q = Quarantine(volume_path, halt_after=None, report=False)
+    q.call(module.load, "bad")
+    q.call(module.load, "worse")
+
+    listed_paths: list[str] = []
+    orig_list = fake_ws.files.list_directory_contents
+
+    def spy_list(directory_path: str):
+        listed_paths.append(directory_path)
+        return orig_list(directory_path)
+
+    fake_ws.files.list_directory_contents = spy_list
+    assert store.get(1).id == 1
+    assert listed_paths == [f"{volume_path}/0001"]
+
+    listed_paths.clear()
+    store.delete(2)
+    assert listed_paths == [f"{volume_path}/0002"]
 
 
 def test_databricks_errors_are_wrapped_as_storage_error(store, fake_ws, volume_path, module):

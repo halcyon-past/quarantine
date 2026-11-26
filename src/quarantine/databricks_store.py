@@ -150,6 +150,26 @@ class DatabricksVolumeStore(StorageBackend):
 
     # -- listing ----------------------------------------------------------
 
+    def _list_record_dir(self, record_id: int) -> dict[str, int]:
+        """List files inside a single record directory, returning ``{filename: size}``."""
+        rec_dir = self._record_dir(record_id)
+        try:
+            children = list(self._files.list_directory_contents(rec_dir))
+        except self._not_found_errors:
+            return {}
+        except self._client_error as exc:
+            raise self._wrap("list records", exc) from exc
+        files: dict[str, int] = {}
+        for child in children:
+            if getattr(child, "is_directory", False):
+                continue
+            fname = getattr(child, "name", None) or posixpath.basename(
+                getattr(child, "path", "") or ""
+            )
+            if fname:
+                files[fname] = int(getattr(child, "file_size", 0) or 0)
+        return files
+
     def _list_objects(self) -> dict[int, dict[str, int]]:
         """Map of ``id -> {filename: size}`` for every record directory under ``self.dir``."""
         out: dict[int, dict[str, int]] = {}
@@ -164,25 +184,10 @@ class DatabricksVolumeStore(StorageBackend):
             name = getattr(entry, "name", None) or posixpath.basename(
                 getattr(entry, "path", "") or ""
             )
-            if not getattr(entry, "is_directory", False) or not name.isdigit():
+            if not getattr(entry, "is_directory", False) or not (name.isascii() and name.isdigit()):
                 continue
             rid = int(name)
-            rec_dir = self._record_dir(rid)
-            try:
-                children = list(self._files.list_directory_contents(rec_dir))
-            except self._not_found_errors:
-                continue
-            except self._client_error as exc:
-                raise self._wrap("list records", exc) from exc
-            files: dict[str, int] = {}
-            for child in children:
-                if getattr(child, "is_directory", False):
-                    continue
-                fname = getattr(child, "name", None) or posixpath.basename(
-                    getattr(child, "path", "") or ""
-                )
-                if fname:
-                    files[fname] = int(getattr(child, "file_size", 0) or 0)
+            files = self._list_record_dir(rid)
             if files:
                 out[rid] = files
         return out
@@ -273,8 +278,8 @@ class DatabricksVolumeStore(StorageBackend):
 
     def get(self, record_id: int) -> Record:
         """Fetch one record into the cache and load it."""
-        files = self._list_objects().get(record_id)
-        if not files or META_NAME not in files:
+        files = self._list_record_dir(record_id)
+        if META_NAME not in files:
             raise StorageError(f"no record {record_id} in {self.dir}")
         return Record.load(self._materialise(record_id, files))
 
@@ -398,7 +403,7 @@ class DatabricksVolumeStore(StorageBackend):
     def delete(self, record: Record | int) -> None:
         """Remove one record's files (and its cache entry)."""
         record_id = record if isinstance(record, int) else record.id
-        files = self._list_objects().get(record_id, {})
+        files = self._list_record_dir(record_id)
         if files:
             self._delete_record_dir(record_id, files)
         with self._mutex:
