@@ -177,10 +177,15 @@ def _parse_redis_url(
     return display_url, client_url, resolved_prefix, resolved_ttl
 
 
-def _decode_hash(raw_map: dict[Any, Any]) -> dict[str, bytes]:
+def _decode_hash(raw_map: dict[Any, Any] | list[Any]) -> dict[str, bytes]:
     """Decode raw Redis hash field names to ``str`` while preserving ``bytes`` values."""
+    items = (
+        raw_map.items()
+        if isinstance(raw_map, dict)
+        else zip(raw_map[0::2], raw_map[1::2], strict=False)
+    )
     out: dict[str, bytes] = {}
-    for k, v in raw_map.items():
+    for k, v in items:
         name = k.decode("utf-8", errors="replace") if isinstance(k, bytes) else str(k)
         val = v if isinstance(v, bytes) else str(v).encode("utf-8")
         out[name] = val

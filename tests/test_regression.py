@@ -780,13 +780,18 @@ class _MiniRespServer:
                 h[args[i]] = args[i + 1]
         return f":{added}\r\n".encode()
 
-    def _cmd_hgetall(self, args: list[bytes]) -> bytes:
+    def _cmd_hgetall(self, args: list[bytes], *, resp3: bool = False) -> bytes:
         key = args[0].decode("utf-8")
         with self._lock:
             self._purge(key)
+            h = self._hashes.get(key, {})
             flat: list[bytes] = []
-            for k, v in self._hashes.get(key, {}).items():
+            for k, v in h.items():
                 flat.extend([k, v])
+            n = len(h)
+        if resp3:
+            body = b"".join(self._resp_bulk(item) for item in flat)
+            return f"%{n}\r\n".encode() + body
         return self._resp_array(flat)
 
     def _cmd_hexists(self, args: list[bytes]) -> bytes:
@@ -845,27 +850,31 @@ class _MiniRespServer:
                 self._expires.pop(key, None)
         return f":{removed}\r\n".encode()
 
-    def _exec_one(self, parts: list[bytes]) -> bytes:
+    @staticmethod
+    def _cmd_hello(args: list[bytes]) -> bytes:
+        if args and args[0] == b"3":
+            return (
+                b"%3\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
+                b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:3\r\n"
+            )
+        return (
+            b"*6\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
+            b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:2\r\n"
+        )
+
+    def _exec_one(self, parts: list[bytes], *, resp3: bool = False) -> bytes:
         cmd = parts[0].decode("utf-8").upper()
         args = parts[1:]
         if cmd == "PING":
             return b"+PONG\r\n"
-        if cmd == "HELLO":
-            if args and args[0] == b"3":
-                return (
-                    b"%3\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
-                    b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:3\r\n"
-                )
-            return (
-                b"*6\r\n$6\r\nserver\r\n$5\r\nredis\r\n"
-                b"$7\r\nversion\r\n$5\r\n7.0.0\r\n$5\r\nproto\r\n:2\r\n"
-            )
         if cmd in {"SELECT", "CLIENT", "WATCH", "UNWATCH"}:
             return b"+OK\r\n"
+        if cmd == "HGETALL":
+            return self._cmd_hgetall(args, resp3=resp3)
         handlers = {
+            "HELLO": self._cmd_hello,
             "SCAN": self._cmd_scan,
             "HSET": self._cmd_hset,
-            "HGETALL": self._cmd_hgetall,
             "HEXISTS": self._cmd_hexists,
             "EXISTS": self._cmd_exists,
             "SET": self._cmd_set,
@@ -882,6 +891,7 @@ class _MiniRespServer:
     def _handle(self, conn: Any) -> None:
         buf = bytearray()
         in_tx = False
+        resp3 = False
         tx_queue: list[list[bytes]] = []
         with conn:
             while not self._stop:
@@ -891,20 +901,22 @@ class _MiniRespServer:
                 if not parts:
                     continue
                 cmd = parts[0].decode("utf-8").upper()
+                if cmd == "HELLO" and len(parts) > 1 and parts[1] == b"3":
+                    resp3 = True
                 if cmd == "MULTI":
                     in_tx = True
                     tx_queue.clear()
                     conn.sendall(b"+OK\r\n")
                 elif cmd == "EXEC":
                     in_tx = False
-                    replies = [self._exec_one(q) for q in tx_queue]
+                    replies = [self._exec_one(q, resp3=resp3) for q in tx_queue]
                     tx_queue.clear()
                     conn.sendall(f"*{len(replies)}\r\n".encode() + b"".join(replies))
                 elif in_tx:
                     tx_queue.append(parts)
                     conn.sendall(b"+QUEUED\r\n")
                 else:
-                    conn.sendall(self._exec_one(parts))
+                    conn.sendall(self._exec_one(parts, resp3=resp3))
 
     def stop(self) -> None:
         self._stop = True
