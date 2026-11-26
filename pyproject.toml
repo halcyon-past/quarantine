@@ -60,6 +60,7 @@ dev = [
     "google-cloud-storage>=2.10",
     "azure-storage-blob>=12.14",
     "redis>=5.0",
+    "databricks-sdk>=0.20",
     "moto[s3,server]>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
@@ -72,6 +73,7 @@ all = [
     "google-cloud-storage>=2.10",
     "azure-storage-blob>=12.14",
     "redis>=5.0",
+    "databricks-sdk>=0.20",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -87,6 +89,9 @@ azure = [
 ]
 redis = [
     "redis>=5.0",
+]
+databricks = [
+    "databricks-sdk>=0.20",
 ]
 
 [project.urls]

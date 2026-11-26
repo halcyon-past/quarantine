@@ -994,3 +994,226 @@ def test_a_fleet_shares_one_redis_quarantine(tmp_path, run):
         assert "Nothing quarantined" in after.stdout
     finally:
         server.stop()
+
+
+class _MiniDatabricksFilesServer:
+    """Minimal HTTP server implementing Databricks Files API v2.0 for regression tests."""
+
+    def __init__(self) -> None:
+        import posixpath
+        from http.server import BaseHTTPRequestHandler
+
+        self._posixpath = posixpath
+        self._lock = threading.Lock()
+        self._dirs: set[str] = set()
+        self._files: dict[str, bytes] = {}
+        parent = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                pass
+
+            def _send_json(self, code: int, payload: dict[str, Any]) -> None:
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                path = urllib.parse.unquote(parsed.path)
+                if path.startswith("/api/2.0/fs/directories"):
+                    dpath = parent._posixpath.normpath(path[len("/api/2.0/fs/directories") :])
+                    with parent._lock:
+                        if dpath not in parent._dirs:
+                            self._send_json(
+                                404, {"error_code": "NOT_FOUND", "message": "not found"}
+                            )
+                            return
+                        prefix = dpath.rstrip("/") + "/"
+                        contents: list[dict[str, Any]] = []
+                        for d in sorted(parent._dirs):
+                            if d.startswith(prefix):
+                                rest = d[len(prefix) :]
+                                if "/" not in rest and rest:
+                                    contents.append({"name": rest, "path": d, "is_directory": True})
+                        for f, data in sorted(parent._files.items()):
+                            if f.startswith(prefix):
+                                rest = f[len(prefix) :]
+                                if "/" not in rest and rest:
+                                    contents.append(
+                                        {
+                                            "name": rest,
+                                            "path": f,
+                                            "is_directory": False,
+                                            "file_size": len(data),
+                                        }
+                                    )
+                    self._send_json(200, {"contents": contents})
+                    return
+                if path.startswith("/api/2.0/fs/files"):
+                    fpath = parent._posixpath.normpath(path[len("/api/2.0/fs/files") :])
+                    with parent._lock:
+                        file_data = parent._files.get(fpath)
+                    if file_data is None:
+                        self._send_json(404, {"error_code": "NOT_FOUND", "message": "not found"})
+                        return
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/octet-stream")
+                    self.send_header("Content-Length", str(len(file_data)))
+                    self.end_headers()
+                    self.wfile.write(file_data)
+                    return
+                self._send_json(404, {"error_code": "NOT_FOUND", "message": "unknown route"})
+
+            def do_PUT(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                path = urllib.parse.unquote(parsed.path)
+                length = int(self.headers.get("Content-Length") or "0")
+                body = self.rfile.read(length) if length else b""
+                if path.startswith("/api/2.0/fs/directories"):
+                    dpath = parent._posixpath.normpath(path[len("/api/2.0/fs/directories") :])
+                    with parent._lock:
+                        parts = dpath.strip("/").split("/")
+                        for i in range(1, len(parts) + 1):
+                            parent._dirs.add("/" + "/".join(parts[:i]))
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                if path.startswith("/api/2.0/fs/files"):
+                    fpath = parent._posixpath.normpath(path[len("/api/2.0/fs/files") :])
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    overwrite = qs.get("overwrite", ["true"])[0].lower() != "false"
+                    with parent._lock:
+                        if not overwrite and fpath in parent._files:
+                            self._send_json(
+                                409,
+                                {"error_code": "RESOURCE_ALREADY_EXISTS", "message": "exists"},
+                            )
+                            return
+                        parent._dirs.add(parent._posixpath.dirname(fpath))
+                        parent._files[fpath] = body
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                self._send_json(404, {"error_code": "NOT_FOUND", "message": "unknown route"})
+
+            def do_DELETE(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                path = urllib.parse.unquote(parsed.path)
+                if path.startswith("/api/2.0/fs/directories"):
+                    dpath = parent._posixpath.normpath(path[len("/api/2.0/fs/directories") :])
+                    with parent._lock:
+                        if dpath not in parent._dirs:
+                            self._send_json(
+                                404, {"error_code": "NOT_FOUND", "message": "not found"}
+                            )
+                            return
+                        prefix = dpath.rstrip("/") + "/"
+                        for k in [p for p in parent._files if p.startswith(prefix)]:
+                            del parent._files[k]
+                        for d in [p for p in parent._dirs if p == dpath or p.startswith(prefix)]:
+                            parent._dirs.discard(d)
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                if path.startswith("/api/2.0/fs/files"):
+                    fpath = parent._posixpath.normpath(path[len("/api/2.0/fs/files") :])
+                    with parent._lock:
+                        if fpath not in parent._files:
+                            self._send_json(
+                                404, {"error_code": "NOT_FOUND", "message": "not found"}
+                            )
+                            return
+                        del parent._files[fpath]
+                    self.send_response(204)
+                    self.end_headers()
+                    return
+                self._send_json(404, {"error_code": "NOT_FOUND", "message": "unknown route"})
+
+        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._httpd.server_address[1]
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._httpd.shutdown()
+        self._httpd.server_close()
+        self._thread.join(timeout=1.0)
+
+
+DATABRICKS_WORKER = """
+import os
+import sys
+
+from quarantine import quarantine
+
+VOL = os.environ["QUARANTINE_VOLUME"]
+
+
+@quarantine(dir=VOL, halt_after=None, report=False, retries=0)
+def process(item):
+    if item.endswith("bad") and os.environ.get("FIXED") != "1":
+        raise ValueError(f"cannot process {item}")
+    return item
+
+
+if __name__ == "__main__":
+    tag = sys.argv[1]
+    for suffix in ["ok-1", "bad", "ok-2"]:
+        process(f"{tag}-{suffix}")
+"""
+
+
+def test_a_fleet_shares_one_databricks_volume_quarantine(tmp_path, run):
+    """Issue #56's journey: ephemeral workers quarantine into one Unity Catalog Volume,
+    and the failures are inspected and replayed from a different machine."""
+    server = _MiniDatabricksFilesServer()
+    try:
+        vol = f"/Volumes/main/analytics/quarantine/fleet-{uuid.uuid4().hex[:8]}"
+        env = {
+            "DATABRICKS_HOST": f"http://127.0.0.1:{server.port}",
+            "DATABRICKS_TOKEN": "test-token",
+            "QUARANTINE_VOLUME": vol,
+        }
+
+        _write_script(tmp_path, "worker.py", DATABRICKS_WORKER)
+
+        # 1. two ephemeral workers run concurrently into the same Volume
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda tag: run("worker.py", tag, extra_env=env), ["w1", "w2"]))
+        for result in results:
+            assert result.returncode == 0, result.stderr
+
+        # 2. from "the laptop": one shared store holds exactly the two failures
+        listed = run("-m", "quarantine", "list", "--dir", vol, "--json", extra_env=env)
+        assert listed.returncode == 0, listed.stderr
+        records = json.loads(listed.stdout)
+        assert sorted(r["error"] for r in records) == [
+            "cannot process w1-bad",
+            "cannot process w2-bad",
+        ]
+        assert [r["id"] for r in records] == [1, 2], "claimed ids never collided"
+
+        # 3. fix the bug, replay only the failures, the Volume directory empties
+        fixed = run(
+            "-m",
+            "quarantine",
+            "retry",
+            "--dir",
+            vol,
+            "--import",
+            "worker.py",
+            extra_env={**env, "FIXED": "1"},
+        )
+        assert fixed.returncode == 0, fixed.stdout + fixed.stderr
+        assert "2 recovered" in fixed.stdout
+
+        after = run("-m", "quarantine", "list", "--dir", vol, extra_env=env)
+        assert "Nothing quarantined" in after.stdout
+    finally:
+        server.stop()

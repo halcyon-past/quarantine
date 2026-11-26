@@ -1,6 +1,6 @@
 ---
-title: Remote Storage Backends (S3, GCS, Azure Blob, Redis) · quarantine-py
-description: Pluggable remote storage for Python dead-letter queues. Share one quarantine across Kubernetes, Docker, and Lambda fleets on AWS S3, Google Cloud Storage, Azure Blob Storage, or Redis.
+title: Remote Storage Backends (S3, GCS, Azure Blob, Redis, Databricks Volumes) · quarantine-py
+description: Pluggable remote storage for Python dead-letter queues. Share one quarantine across Kubernetes, Docker, Lambda, and Databricks fleets on AWS S3, Google Cloud Storage, Azure Blob Storage, Redis, or Unity Catalog Volumes.
 ---
 
 # Remote storage
@@ -394,6 +394,42 @@ Records are stored atomically as Redis hashes under `{<prefix>}:record:<id>`
 `{<prefix>}:next_id`. Optional `ttl` (in seconds) expires each record hash
 automatically.
 
+## Using the Databricks Unity Catalog Volumes backend
+
+To store quarantined records inside a governed Databricks Unity Catalog Volume,
+install the `databricks` extra:
+
+```bash
+pip install "quarantine-py[databricks]"
+```
+
+Pass a `/Volumes/<catalog>/<schema>/<volume>[/<prefix>]` path anywhere a folder
+went:
+
+```python
+@quarantine(dir="/Volumes/main/analytics/quarantine/etl")
+def process(item): ...
+```
+
+```bash
+quarantine list  --dir /Volumes/main/analytics/quarantine/etl
+quarantine retry --dir /Volumes/main/analytics/quarantine/etl --import job.py
+```
+
+Authentication uses `databricks-sdk`'s standard `WorkspaceClient()` chain
+(`DATABRICKS_HOST` + `DATABRICKS_TOKEN`, `~/.databrickscfg`, OAuth/instance
+identity, or Databricks runtime credentials). Required Unity Catalog privileges
+are `USE CATALOG`, `USE SCHEMA`, `READ VOLUME`, and `WRITE VOLUME` (drop `WRITE
+VOLUME` for read-only inspection). Records follow the same layout and
+commit-point guarantees as S3/GCS/Azure ([ADR 0007](adr/0007-object-store-commit-point.md)),
+claiming ids with `.claim` (`overwrite=False`) and committing with `meta.json`
+last.
+
+> **macOS note:** Any `/Volumes/...` path is routed to `DatabricksVolumeStore`.
+> To store a local quarantine on a macOS external drive mounted under
+> `/Volumes/<DriveName>`, instantiate `quarantine.Store("/Volumes/...")`
+> directly.
+
 ## Writing your own backend
 
 The interface is public and small. Subclass
@@ -419,7 +455,5 @@ From then on `dir="mystore://…"` works everywhere a path does. Whatever the
 transport, keep the two promises: a reader never sees a partial record, and a
 failed write never silently loses one.
 
-Databricks Unity Catalog volumes are planned as a
-further built-in — see [ENHANCEMENTS.md](https://github.com/halcyon-past/quarantine/blob/main/ENHANCEMENTS.md);
-the interface above is how it will be built, and how you can build one
-sooner.
+The interface above is how built-in backends are implemented, and how you can
+build and register your own custom backend.
