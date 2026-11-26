@@ -370,6 +370,8 @@ lives in [ADR 0007](adr/0007-object-store-commit-point.md)):
 
 ## Using the Redis backend
 
+> See the dedicated **[Redis Remote Storage Guide](redis.md)** for full URL options, TLS, Cluster hash tags, TTL memory management, and Docker setup.
+
 For short-lived, high-churn quarantines where an object store is overkill,
 install the `redis` extra:
 
@@ -395,6 +397,8 @@ Records are stored atomically as Redis hashes under `{<prefix>}:record:<id>`
 automatically.
 
 ## Using the Databricks Unity Catalog Volumes backend
+
+> See the dedicated **[Databricks Unity Catalog Volumes Guide](databricks.md)** for full authentication chains, Unity Catalog `GRANT` statements, and commit-point details.
 
 To store quarantined records inside a governed Databricks Unity Catalog Volume,
 install the `databricks` extra:
